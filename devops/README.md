@@ -1,6 +1,6 @@
 # Azure DevOps Pipeline
 
-Your pipeline will most probably have [multiple stages](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/stages?view=azure-devops&tabs=yaml) and multiple sources like other git repos and/or Pipeline Outputs.
+Your "docs" pipeline will most probably have [multiple stages](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/stages?view=azure-devops&tabs=yaml) and multiple sources like other git repos and/or Pipeline Outputs.
 
 The present version of DocFxHelper.ps1 supports the following scenarios:
 
