@@ -2,6 +2,22 @@
 #Requires -Modules 'Posh-git', 'Powershell-Yaml', 'Poshstache'
 
 <#
+  .SYNOPSIS Script that helps in the integration of ADO Wikis, APIs, Conceptual Documentations and PowerShell modules into DocFx
+
+  .EXAMPLE Sample usage of and order
+
+    Initialize-DocFxHelper
+    Add-AdoWiki -CloneUrl "https://foo@dev.azure.com/foo/bar/_git/Wiki.FooDocs"
+    Add-AdoWiki -CloneUrl "https://foo@dev.azure.com/foo/bar/_git/Wiki.FooDocs.Contribute" -Target "contribute" -homepage "Contribute.md"
+    Add-AdoWiki -CloneUrl "https://foo@dev.azure.com/foo/bar/_git/Wiki.FooDocs.Guidance" -Target "guidance" -MenuDisplayName "Guidance" -MenuPosition 3 -homepage "Home.md" -excludes @("README.md")
+    Add-Api -CloneUrl "https://dev.azure.com/foo/bar/_git/bar.core" -PipelineId "api_bar_core"  -ArtifactName "Docs.ApiYaml" -Target "apis/Bar.Core" -MenuParentItemName "All APIs" -MenuDisplayName "Bar.Core" -HomepageUid "Bar.Core.Common"
+    Add-Conceptual -CloneUrl "https://dev.azure.com/foo/bar/_git/bar.core" -RepoRelativePath "docs/technology/apireferences/Bar.Core/" -PipelineId "api_bar_core"  -ArtifactName "Docs.ConceptualDocs" -Target "apis/Bar.Core.Suite" -MenuParentItemName "All APIs" -MenuDisplayName "Bar Core Suite" -Medias @("images")
+    Add-PowerShellModule -CloneUrl "https://dev.azure.com/foo/lorem/_git/Foo.lorem.HelloWorld" -RepoRelativePath "src" -PipelineId "fooLoremHelloWorld" -ArtifactName "docs" -Target "powershellmodules/Foo.lorem.HelloWorld" -MenuDisplayName "Foo.lorem.HelloWorld"
+    Set-Template -Template ".\s\foo.docs\api.list.template" -Target ".\s\Wiki.FooDocs\includes\api.list.md"
+
+#>
+
+<#
   Normal mode:
     $ErrorActionPreference = 'Continue'
     $VerbosePreference = 'SilentlyContinue'
@@ -19,6 +35,9 @@
     $DebugPreference = 'Continue'
 #>
 
+$DocFxHelperVersion = [version]"0.1.1"
+
+Write-Host "DocFxHelper version [$($DocFxHelperVersion)]"
 
 $baseUrl = "http://home.local"
 $baseUri = [Uri]::new($baseUrl)
@@ -305,7 +324,7 @@ function script:getDocFxHelperResourceViewModel
     $private:vm.docsSubfolderPath = Join-Path -Path (get-location) -ChildPath $private:pipelineId -AdditionalChildPath (@($private:vm.artifactName) + "$($private:vm.docsSubfolder)".replace("/","\").split("\"))
   }
   else
-{
+  {
     Write-Debug "not artifactName provided, treating item as a resources.repositories.repository"
     $private:vm.sourceType = [SourceType]::Repository
     $private:vm.gitPath = Join-Path -Path (get-location) -ChildPath "s" -AdditionalChildPath $private:repoName
@@ -347,11 +366,11 @@ function script:getDocFxHelperResourceViewModel
     Write-Debug "HomepageUid: [$($private:vm.homepageUid)]"    
   }
 
-    
+
   if ($Medias)
   {
     Write-Debug "adding [$($Medias.count)] media to item"
-
+  
     foreach($private:media in $Medias)
     {
       if (!($private:vm.media | where-object {$_ -eq $private:media}))
@@ -361,7 +380,7 @@ function script:getDocFxHelperResourceViewModel
       }
     }
   }
-  
+
   return $private:vm
 }
 
@@ -376,7 +395,7 @@ function script:setDocFxHelperResourceHierarchy
 
   Write-Verbose "Set a parentId to items that have none defined"
   if ("$($ResourceViewModel.parentId)" -eq "")
-{
+  {
     $ResourceViewModel.parentId = $DocFxHelperViewModel.root.id
   }
 
@@ -402,7 +421,7 @@ function script:setDocFxHelperResourceHierarchy
     else
     {
       Write-Verbose "Parent not found for [$($ResourceViewModel.id)] and parentId [$($ResourceViewModel.parentId)]"
-}
+    }
   }
   else
   {
@@ -421,15 +440,15 @@ function script:saveDocFxHelperViewModel
     Write-Verbose "$($private:destination) exists"
   }
   else
-{
+  {
     Write-Verbose "$($private:destination) does not exist, creating"
     New-Item $private:destination -ItemType Directory | Out-Null
   }
-  
+
   $private:docFxHelperViewModel_json = Join-Path $private:destination -ChildPath "docfxHelper.ViewModel.json"
 
   $ViewModel | ConvertTo-Json -Depth 3 | Set-Content $private:docFxHelperViewModel_json
-
+  
 }
 
 function script:getDocFxHelperViewModel
@@ -535,9 +554,9 @@ function script:Get-DocfxItemMetadata
   $private:item.DocFxSafe.RenameRequired = $private:item.DocFxSafe.FileName -ne $private:item.AdoWiki.FileName
 
   return [PSCustomObject]$private:item
-  }
+}
 
-  
+
 
 function script:Get-AdoWikiMetadata
 {
@@ -548,20 +567,20 @@ function script:Get-AdoWikiMetadata
   $private:metadataList = [System.Collections.ArrayList]::new()
 
   $private:folders = Get-AdoWikiFolders -Path . -Exclude @(".git", ".attachments")
-
+    
   foreach($private:folder in $private:folders)
   {
     <#
       $private:folder = $private:folders | select-object -first 1
     #>
     $private:mdFiles = Get-WikiMarkdowns -Folder $private:folder   
-
+  
     foreach($private:mdFile in $private:mdFiles)
-  {
+    {
       $private:metadata = Get-DocfxItemMetadata -mdFile $private:mdFile
   
       $private:metadataList.Add($private:metadata) | Out-Null
-  }
+    }    
   }
   
   Pop-Location # docs
@@ -570,12 +589,12 @@ function script:Get-AdoWikiMetadata
 }
 
 function script:Get-AdoWikiFolders
-  {
+{
   param($Path, [string[]]$Exclude)
 
   $private:workingDirectory = (Get-Location).Path
   $private:folders = [System.Collections.ArrayList]::new()
-  
+
   $private:folders.Add((Get-Item $Path).FullName) | Out-null
 
   $private:subFolders = Get-ChildItem -path $Path -Recurse -Directory
@@ -590,13 +609,13 @@ function script:Get-AdoWikiFolders
     $private:segments = $private:relative.Split("$([IO.Path]::DirectorySeparatorChar)", [System.StringSplitOptions]::RemoveEmptyEntries)
 
     if (!$private:segments.Where({$_ -in $Exclude}))
-  {
+    {
       $private:folders.Add($private:subFolder.FullName) | out-null
     }
   }
-
+  
   return $private:folders
-  }
+}
 
 function script:Convert-FromWikiOrder
 {
@@ -613,11 +632,11 @@ function script:Convert-FromWikiOrder
     folderUri           = $null
     depth               = $null
     orderItems          = [System.Collections.ArrayList]::new()
-}
+  }
   $o.folderRelative = $o.folderAbsolute.Substring($private:workingDirectory.Path.Length)
   $o.folderUri = [Uri]::new($baseUri, $o.folderRelative.replace("$([IO.Path]::DirectorySeparatorChar)", "/"))
   $o.depth = $o.folderRelative.Split("$([IO.Path]::DirectorySeparatorChar)").Count - 1
-
+      
   foreach($orderItem in $o.content)
   {
     <#
@@ -630,13 +649,13 @@ function script:Convert-FromWikiOrder
       $orderItem = "Foo"
       $orderItem = "Foo-Bar"
       $orderItem = "Foo-Bar-(Snafu)"
-  #>
+    #>
 
     if ("$orderItem" -ne "")
     {
-
+    
       Write-Debug "OrderItem: $orderItem"
-
+      
       $oi = [ordered]@{
         orderItem              = $orderItem
         orderItemMd            = "$($orderItem).md"
@@ -659,50 +678,50 @@ function script:ConvertTo-DocFxToc
   param($OrderItems, $depth)
 
   $tocItems = [System.Collections.ArrayList]::new()
-
+  
   foreach ($orderItem in $OrderItems)
   {
-  <#
+    <#
       $orderItem = $OrderItems | select-object -first 1
-  #>
-    
+    #>
+
     $tocItem = [ordered]@{
       name = $orderItem.display
       href = $null
-  }
+    }
 
     if (Test-Path $orderItem.orderItemFolderPath)
     {
 
       if ($depth -eq 0)
-  {
+      {
         <#
           name: some thing
           href: some-thing/
         #>
         $tocItem.href = "$($orderItem.orderItem)/"
-  }
+      }
       else
-  {
+      {
         <#
           name: some thing
           href: some-thing/toc.yml
         #>
         $tocItem.href = "$($orderItem.orderItem)/toc.yml"
-  }
+      }
 
       $tocItem.homepage = "$($orderItem.orderItemMd)"
 
     }
     else
-  {
+    {
       <#
         name: some thing
         href: some-thing.md
       #>
       $tocItem.href = $orderItem.orderItemMd
 
-    }      
+    }
 
     $tocItems.Add([PSCustomObject]$tocItem) | out-null
 
@@ -773,20 +792,20 @@ function script:Update-Links
       #>
       $conceptualSectionNumber++
       if ($conceptual.content -match $f)
-      {        
+      { 
         if ($VerbosePreference -eq 'Continue')       
         {
-        Write-Verbose "Conceptual section $conceptualSectionNumber"
-        Write-Verbose "Before:"
-        $conceptual.content | select-string $findRegex -AllMatches | Out-Host
+          Write-Verbose "Conceptual section $conceptualSectionNumber"
+          Write-Verbose "Before:"
+          $conceptual.content | select-string $findRegex -AllMatches | Out-Host
         }
         $conceptual.content = $conceptual.content -replace $findRegex, $replaceCode
         if ($VerbosePreference -eq 'Continue')
         {
-        Write-Verbose "After:"
-        $conceptual.content | select-string $findRegex -AllMatches | Out-Host
+          Write-Verbose "After:"
+          $conceptual.content | select-string $findRegex -AllMatches | Out-Host
+        }
       }
-    }
     }
     $Content = $sections | select-object -ExpandProperty content
   }
@@ -838,13 +857,14 @@ function script:Update-ToMdLinks
   $private:r = {
     $private:in = @{
       display = $_.Groups["display"].Value
-      link = $_.Groups["link"].Value  
+      link = $_.Groups["link"].Value
     }
     Write-Debug "  $($in.link)"
     <#
     $in = @{}
       $in.display = "This is the display"
-      $in.link = "https://user:password@www.contoso.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName"
+      # Ignored
+      $in.link = "https://user:password@www.contoso.com:80/Home/Index.htm?q1=v1&q2=v2#FragmentName" 
       $in.link = "xfer:Home_Index#FragmentName"
       $in.link = "mail:foo@bar.com"
       $in.link = "tel:foo@bar.com"
@@ -854,9 +874,10 @@ function script:Update-ToMdLinks
       
       # to verify
       $in.link = "/Home/Index.md?q1=v1&q2=v2#FragmentName"
-      $in.link = "Home/Index?q1=v1&q2=v2#FragmentName"
+      $in.link = "Home/Index?q1=v1&q2=v2#FragmentName"      
       $in.link = "/With%20Space/With%20Space%20Too.md?q1=v1&q2=v2#FragmentName"
       $in.link = "/With Space/With Space Too.md?q1=v1&q2=v2#FragmentName"
+
       $in.display = Read-Host "Display"
       $in.link = Read-Host "Link"
     #>
@@ -894,23 +915,23 @@ function script:Update-ToMdLinks
           $private:pageRelativeLink = [Uri]::new($private:pageUri, $out.link)
           
           if ($AllMdFiles -contains $private:pageRelativeLink.AbsolutePath)
-    {
+          {
             Write-Debug "    link is relative to an existing .md"
             $private:out.link = "$($private:pageRelativeLink.AbsolutePath).md$($private:pageRelativeLink.Query)$($private:pageRelativeLink.Fragment)"
           }
         }
       }
-      
+  
     }
-
+    
     $private:ret = "[$($private:out.display)]($($private:out.link))"
     return $private:ret
 
   }
     
-  $private:UpdatedContent = Update-Links -Content $content -ReplaceCode $r
+  $private:updatedContent = Update-Links -Content $content -ReplaceCode $r
 
-  return $UpdatedContent
+  return $updatedContent
  
 }
 
@@ -925,7 +946,7 @@ function script:Update-RenamedLinks
     }
     <#
     $in = @{}
-      $in.display = "This is the display"
+      $in.display = "This is the display"      
       $in.link = "/With Space/With Space.md?q1=v1&q2=v2#FragmentName"
       $in.link = "/With Space/With Space?q1=v1&q2=v2#FragmentName"
       $in.display = Read-Host "Display"
@@ -939,11 +960,11 @@ function script:Update-RenamedLinks
     $private:testUri = [Uri]::new($baseUri,$private:out.link)
 
     if ($private:testUri.Host -ne $baseUri.Host)
-      {
+    {
       Write-Debug "ignored $($private:out.link) is external"
-      }
-      else
-      {
+    }
+    else
+    {
       if ($private:testUri.Segments -contains ".attachments/")
       {
         Write-Debug "ignored - links to an image"
@@ -970,7 +991,6 @@ function script:Update-RenamedLinks
   $private:updatedContent = Update-Links -Content $content -ReplaceCode $r
 
   return $updatedContent
- 
 }
 
 function script:Update-ToRelativeLinks
@@ -980,7 +1000,7 @@ function script:Update-ToRelativeLinks
   $private:r = {
     $private:in = @{
       display = $_.Groups["display"].Value
-      link = $_.Groups["link"].Value
+      link = $_.Groups["link"].Value  
     }
     <#
     $in = @{}
@@ -1003,53 +1023,55 @@ function script:Update-ToRelativeLinks
     if ($private:out.link.StartsWith("/"))
     {
       $private:linkUri = [Uri]::new($baseUri, $private:out.link)
-
+      
       $private:out.link = $PageUri.MakeRelativeUri($linkUri).ToString()
-      }
+    }
 
     $private:ret = "[$($private:out.display)]($($private:out.link))"
     return $ret
 
   }
     
-  $private:updatedContent = Update-Links -Content $content -ReplaceCode $r
+  $private:UpdatedContent = Update-Links -Content $content -ReplaceCode $r
 
-  return $updatedContent
+  return $UpdatedContent
+ 
 }
 
 function script:Update-MermaidCodeDelimiter
 {
-  param($mdFile)
+  param($mdfile)
 
   $content = get-content -path $mdfile.FullName -raw
   if ("" -ne "$content" -and ("$content".Contains(":::mermaid") -or "$content".Contains("::: mermaid")))
-{
+  {
     Write-Verbose "Found Mermaid Code in $($mdfile.FullName). Fixing..."
     $content = $content.replace(":::mermaid", "<pre class=""mermaid"">")
     $content = $content.replace("::: mermaid", "<pre class=""mermaid"">")
     $content = $content.replace(":::", "</pre>")
     set-content -path $mdfile.FullName -value $content
+  }
 }
-      }
-  
-function script:Update-AdoWikiToDocFx
-  {
-  param($AdoWikiViewModel)
 
+function script:Update-AdoWikiToDocFx
+{
+  param($AdoWikiViewModel)
+  
   $Path = $AdoWikiViewModel.docsSubfolderPath
   $IsChildWiki = $AdoWikiViewModel.isChildWiki
 
   Write-Host "Updating AdoWiki [$Path] to make it DocFx friendly"
+  Write-Debug "Is Child Wiki: $($IsChildWiki)"
 
   if ($IsChildWiki)
-      {
+  {
     $private:Depth = 1
-    }
-    else
-    {
+  }
+  else
+  {
     $private:Depth = 0
   }
-
+    
   push-location $Path
   
   $private:renameMap = [System.Collections.ArrayList]::new()
@@ -1272,7 +1294,7 @@ function script:Update-AdoWikiToDocFx
     
     $private:content = Update-FixAdoWikiEscapes -content $private:content
     
-    # /foo/bar -> /foo/bar.md
+    # /foo/bar -> /foo/bar.md    
     $private:content = Update-ToMdLinks -content $private:content -AllMdFiles $private:allMetadata.AdoWiki.LinkAbsolute -MdFileMetadata $private:metadata
     
     # /foo bar/foo bar.md -> /foo_bar/foo_bar.md
@@ -1309,7 +1331,7 @@ function script:Update-AdoWikiToDocFx
 
     $private:pageUID = Get-PageUid -pagesUidPrefix $AdoWikiViewModel.pagesUidPrefix -mdfile $private:mdFile
     Set-MdYamlHeader -file $private:mdFile -key "uid" -value $private:pageUID    
-}
+  }
 
   pop-location # target
 }
@@ -1320,7 +1342,7 @@ function script:Get-TocItem
 
   Write-Verbose "Trying to find [$Name] in a toc of $($Items.count) items.  Recursive ? $($Recurse)"
   foreach($private:item in $Items)
-{
+  {
     if ($private:item.name -eq $Name)
     {
       Write-Verbose "Found $Name"
@@ -1345,15 +1367,15 @@ function script:Get-TocItem
 }
 
 function script:Merge-ResourceWithParent
-  {
+{
   param([Parameter(Mandatory)]$ResourceViewModel)
 
   Write-Information "Merge [Child] resources into [Parent]"
-    <#
+  <#
     $private:item -> $ResourceViewModel
 
-    #>
-    
+  #>
+ 
   if ($ResourceViewModel.parentId -eq $ResourceViewModel.id)
   {
     Write-Verbose "$($ResourceViewModel.id) is the root item, it doesn't have to be merged with itself"
@@ -1368,7 +1390,7 @@ function script:Merge-ResourceWithParent
       New-Item $ResourceViewModel.parentToc_yml -Force -ItemType File
       [PSCustomObject][ordered]@{items = [System.Collections.ArrayList]::new()} | ConvertTo-Yaml -OutFile $ResourceViewModel.parentToc_yml -Force
     }
-
+      
     Write-Debug "parent toc.yml: [$($ResourceViewModel.parentToc_yml)]"
 
     $private:parentToc = get-content $ResourceViewModel.parentToc_yml | ConvertFrom-Yaml -Ordered
@@ -1378,7 +1400,7 @@ function script:Merge-ResourceWithParent
       $private:tempParentToc = @{items = [System.Collections.ArrayList]::new()}
       Write-Debug "and moving [$($private:parentToc.count)] items in it"
       foreach($private:oldItem in $private:parentToc)
-    {
+      {
         $private:tempParentToc.items.Add($private:oldItem) | out-null
 
       }
@@ -1398,9 +1420,9 @@ function script:Merge-ResourceWithParent
           items = [System.Collections.ArrayList]::new()
         }
         $private:parentToc.items.Add($private:parentTocItem) | out-null
-    }
-    else
-    {
+      }
+      else
+      {
         Write-Debug "a parent item named [$($ResourceViewModel.menuParentItemName)] found in toc items"
       }
     }
@@ -1416,12 +1438,12 @@ function script:Merge-ResourceWithParent
     $private:childTocItem = Get-TocItem -Items $private:parentTocItem.items -Name $ResourceViewModel.menuDisplayName
 
     if ($null -eq $private:childTocItem)
-      {
+    {
       Write-Debug "[$($ResourceViewModel.menuDisplayName)] not found, creating a new toc item"
       $private:childTocItem = [ordered]@{
         name = $ResourceViewModel.menuDisplayName
       }
-  
+
       if ($null -eq $private:parentTocItem.items)
       {
         Write-Debug "but wait, the parentTocItem doesn't have an items property, adding it"
@@ -1455,24 +1477,24 @@ function script:Merge-ResourceWithParent
     {
       Write-Debug "a toc item already exists in the parent's toc.yml, no need to create a new one."
     }
-  
+
     Write-Debug "Figuring out what the href value should be."
     push-location (split-path $ResourceViewModel.parentToc_yml)
     if (("$($ResourceViewModel.target)".replace("\","/") -split "/").count -ge 2)
-      {
+    {        
       Write-Debug "Toc $($ResourceViewModel.parentToc_yml) is not at the root, so the href will be {folder}/toc.yml"
       $private:targetTocYmlPath = Join-Path $ResourceViewModel.docsSubfolderPath -ChildPath "toc.yml"
       if (!(Test-Path $private:targetTocYmlPath))
-        {
-          
+      {
+
         New-Item $private:targetTocYmlPath -Force
         ConvertTo-Yaml -Data (@{items = @()}) -OutFile $private:targetTocYmlPath -Force
-    
+        
       }
       $private:childTocItem.href = "$(Resolve-Path -Path $private:targetTocYmlPath -Relative)".Replace("\","/")
     }
     else
-          {
+    {
       Write-Debug "Toc $($ResourceViewModel.parentToc_yml) is at the root, so the href is {folder}/"
       $private:childTocItem.href = "$(Resolve-Path $ResourceViewModel.docsSubfolderPath -Relative)/".Replace("\","/")
     }
@@ -1482,11 +1504,11 @@ function script:Merge-ResourceWithParent
     {
       Write-Debug "item's homepageUid specified [$($ResourceViewModel.homepageUid)], using it to set the toc item's topicUid"
       $private:childTocItem.topicUid = "$($ResourceViewModel.homepageUid)"
-          }
-          else
-          {
+    }
+    else
+    {
       Write-Debug "item's homepageUid not specified, the folder's default html pages will be used: default or index"
-          }
+    }
 
     Write-Debug "Toc Item: `r`n$($private:childTocItem | ConvertTo-Yaml)"
     
@@ -1496,12 +1518,12 @@ function script:Merge-ResourceWithParent
   else
   {
     Write-Information "Item [$($ResourceViewModel.id)] doesn't have a menuDisplayName defined, so not added to any toc.yml"
-      }
-  
+  }
+
 }
 
 function script:Get-TocDepth
-      {
+{
   param($resourceTarget, $resourcePath, $tocPath)
 
   $private:resourceDepth = 0
@@ -1544,17 +1566,17 @@ function script:FixTocItemsThatShouldPointToTheirFolderInstead
         href: bar/
         homepage: bar.md
 
-  
+
     #>
 
     $private:tocDepth = Get-TocDepth -resourceTarget $ResourceViewModel.target -resourcePath $ResourceViewModel.docsSubfolderPath -tocPath $private:tableOfContent_yml
-  
+
     $private:tocItems = Get-Content $private:tableOfContent_yml | ConvertFrom-yaml -Ordered
-  
+
     push-location (split-path $private:tableOfContent_yml)
 
     $private:tocItemsQueue = [System.Collections.Queue]::new()
-                
+
     $private:tocItemsQueue.Enqueue($private:tocItems)
 
     while ($private:tocItemsQueue.count -gt 0)
@@ -1601,7 +1623,7 @@ function script:FixTocItemsThatShouldPointToTheirFolderInstead
                   Write-Debug "TocItem Before:`r`n$($private:tocItem | ConvertTo-yaml)"
                   $private:tocItem.homepage = $private:tocItem.href
                   $private:tocItem.href = "$(split-path $private:tocItem.href -LeafBase)/"
-        
+  
                   if ($private:tocDepth -gt 0)
                   {
                     Write-Information "and since the toc.yml's depth [$($private:tocDepth)] is greater than 0, the href should actually point to the child folder's toc.yml"
@@ -1653,7 +1675,7 @@ function script:Set-ConceptualYamlHeader
     startLine = 0.0
     endLine = 0.0
     isExternal = $false
-      }
+  }
 
   Set-MdYamlHeader -file $File -key "source" -value $private:yml
   Set-MdYamlHeader -file $File -key "documentation" -value $private:yml
@@ -1689,10 +1711,10 @@ function script:Set-ConceptualMarkDownFiles
     $private:pageUid = Get-PageUid -pagesUidPrefix $ViewModel.pagesUidPrefix -mdfile $private:mdFile
     Set-MdYamlHeader -file $private:mdFile -key "uid" -value $private:pageUid
     Set-ConceptualYamlHeader -File $mdFile -RepoRelativePath $ViewModel.repoRelativePath
-    }
+  }
   pop-location
 
-  }
+}
 
 function script:ConvertTo-DocFxJson
 {
@@ -1713,11 +1735,11 @@ function script:ConvertTo-DocFxJson
   {
     Write-Verbose "docFx.json [$($private:docfx_json)] not found"
     $private:docfx = $null
-}
+  }
 
 
   if ($null -eq $private:docfx)
-{  
+  {
     Write-Verbose "docfx is null, generating a generic docfx schema"
     $private:docfx = [ordered]@{
       metadata = @()
@@ -1740,7 +1762,7 @@ function script:ConvertTo-DocFxJson
   }
   
   
-
+  
   <#
   
   $private:docfx.metadata = @()
@@ -1748,8 +1770,8 @@ function script:ConvertTo-DocFxJson
   $private:docfx.build.resource = @()
   
   #>
-
-
+ 
+  
   push-location $private:workingDirectory
 
   if ($ResourceViewModel.resourceType -eq [ResourceType]::Wiki)
@@ -1773,16 +1795,16 @@ function script:ConvertTo-DocFxJson
       files = @(".attachments/**")
       src = "$((Resolve-Path $ResourceViewModel.docsSubfolderPath -Relative))\"
     }
-
+  
     if ("$($ResourceViewModel.target)" -ne "")
     {
       $private:docfx_build_content_item.dest = "$($ResourceViewModel.target)"
       $private:docfx_build_resource_item.dest = "$($ResourceViewModel.target)"
     }
-
+  
     $private:docfx.build.content += $private:docfx_build_content_item
     $private:docfx.build.resource += $private:docfx_build_resource_item
-
+    
     if (!$private:docfx.build.fileMetadata)
     {
       $private:docfx.build.fileMetadata = [ordered]@{}
@@ -1791,10 +1813,10 @@ function script:ConvertTo-DocFxJson
     if (!$private:docfx.build.fileMetadata._gitContribute)
     {
       $private:docfx.build.fileMetadata._gitContribute = [ordered]@{}
-  }
-
+    }
+  
     if (!$private:docfx.build.fileMetadata._gitUrlPattern)
-  {
+    {
       $private:docfx.build.fileMetadata._gitUrlPattern = [ordered]@{}
     }
     
@@ -1815,7 +1837,7 @@ function script:ConvertTo-DocFxJson
     Write-Information "  $($ResourceViewModel.id)"
   
     if ($ResourceViewModel.metadata)
-  {
+    {
       $private:apiPathRelative = Resolve-Path $ResourceViewModel.metadata.srcFolder -Relative
   
       $private:docfx_metadata_content_item = [ordered]@{
@@ -1841,8 +1863,8 @@ function script:ConvertTo-DocFxJson
         disableDefaultFilter =  $false
         shouldSkipMarkup = $true
         #properties = @{}   
-  }
-
+      }
+  
       $private:docfx.metadata += $private:docfx_metadata_content_item
     }
 
@@ -1865,12 +1887,12 @@ function script:ConvertTo-DocFxJson
       exclude = @()
       src  = (Resolve-Path $ResourceViewModel.docsSubfolderPath -Relative)
       dest = $ResourceViewModel.target
-  }
+    }
 
     $private:docfx.build.content += $private:docfx_build_content_item
 
     if ($ResourceViewModel.medias)
-  {
+    {
       Write-Debug "Setting resources for conceptual"
       $private:docfx_build_resource_item = [ordered]@{
         files = @()
@@ -1879,16 +1901,16 @@ function script:ConvertTo-DocFxJson
       }
 
       foreach ($private:media in $ResourceViewModel.medias)
-    {
+      {
         $private:docfx_build_resource_item.files += "**/$($private:media)/**"
-    }
+      }
 
       $private:docfx.build.resource += $private:docfx_build_resource_item
-  }
-
+    }
+   
     $private:git_pattern = "$((Resolve-Path $ResourceViewModel.docsSubfolderPath -Relative))/**".replace("\", "/")
-
-
+    
+  
     $private:docfx.build.fileMetadata._gitContribute."$($private:git_pattern)" = [ordered]@{
       repo = $ResourceViewModel.cloneUrl
       branch = $ResourceViewModel.gitStatus.Branch
@@ -1918,7 +1940,7 @@ function script:ConvertTo-DocFxJson
 
   }
 
-  Pop-Location
+  pop-location
 
   $private:docfx | ConvertTo-Json -Depth 4 | Set-Content $private:docfx_json -Force
   Write-Host "Resource [$($ResourceViewModel.id)] added to docfx"
@@ -1960,9 +1982,12 @@ function Add-AdoWiki
     ParentId           = $ParentId
   }
   Write-Verbose "Generate Wiki ViewModel"
+
+  Write-Host "Add-AdoWiki Updating AdoWiki files to make them DocFx friendly"
+  Write-Host "Add-AdoWiki Step 1 - Prepare ViewModel"
   $private:wikiViewModel = getDocFxHelperResourceViewModel @private:a    
   $private:wikiViewModel.wikiUrl = "$WikiUrl"
-  $private:wikiViewModel.isChildWiki = ("$($private:wikiViewModel.target)" -eq "")
+  $private:wikiViewModel.isChildWiki = ("$($private:wikiViewModel.target)" -ne "")
   $private:wikiViewModel.medias += ".attachments"
   
   if ("$($private:wikiViewModel.wikiUrl)" -eq "")
@@ -1975,7 +2000,7 @@ function Add-AdoWiki
   setDocFxHelperResourceHierarchy -DocFxHelperViewModel $private:docFxHelperViewModel -ResourceViewModel $private:wikiViewModel
   
   if ($null -eq $private:docFxHelperViewModel.wikis)
-{
+  {
     $private:docFxHelperViewModel.wikis = @()
   }
   $private:docFxHelperViewModel.all += $private:wikiViewModel
@@ -1983,23 +2008,29 @@ function Add-AdoWiki
   
   saveDocFxHelperViewModel -ViewModel $private:docFxHelperViewModel
 
-  Write-Host "Updating AdoWiki files to make them DocFx friendly"
+  
   Write-Host "WikiPath: [$($private:wikiViewModel.docsSubfolderPath)]"
   Write-Host "Is Child Wiki: [$($private:wikiViewModel.isChildWiki)]"
+
+  Write-Host "Add-AdoWiki Step 2 - Update AdoWiki to DocFx"
   Update-AdoWikiToDocFx -AdoWikiViewModel $private:wikiViewModel
-
-  Write-Host "Merging Wiki with parent"
+  
+  Write-Host "Add-AdoWiki Step 3 - Merging Wiki with parent"
   Merge-ResourceWithParent -ResourceViewModel $private:wikiViewModel
-
+  
+  
+  Write-Host "Add-AdoWiki Step 4 - Fix Toc Items that should point to their folder instead of their .md"
   FixTocItemsThatShouldPointToTheirFolderInstead -ResourceViewModel $private:docFxHelperViewModel.root
-
+  
+  
+  Write-Host "Add-AdoWiki Step 5 - Adding Wiki to DocFx.json"
   ConvertTo-DocFxJson -ResourceViewModel $private:wikiViewModel
-    
-  Write-Host "Wiki is ready"
+
+  Write-Host "Add-AdoWiki Done - Wiki is ready"
 }
 
 function Add-Api
-  {
+{
   param(
     [Parameter(Mandatory)][Uri]$CloneUrl,
     [string]$PipelineId,
@@ -2016,12 +2047,12 @@ function Add-Api
 
   Write-Information "$CloneUrl"
   $private:docFxHelperViewModel = getDocFxHelperViewModel
-  
+
   if ($null -eq $private:docFxHelperViewModel.apis)
-    {
+  {
     $private:docFxHelperViewModel.apis = @()
   }
-  
+
   $private:a = @{
     ResourceType       = [ResourceType]::Api
     CloneUrl           = $CloneUrl
@@ -2034,8 +2065,9 @@ function Add-Api
     HomepageUid        = $HomepageUid
     Medias             = $Medias
     ParentId           = $ParentId
-    }    
-  Write-Verbose "Generate API ViewModel"
+  }
+  Write-Host "Add-Api Updating API files to make them DocFx friendly"
+  Write-Host "Add-Api Step 1 - Prepare ViewModel"
   $private:apiViewModel = getDocFxHelperResourceViewModel @private:a
   
   setDocFxHelperResourceHierarchy -DocFxHelperViewModel $private:docFxHelperViewModel -ResourceViewModel $private:apiViewModel
@@ -2045,16 +2077,19 @@ function Add-Api
   
   saveDocFxHelperViewModel -ViewModel $private:docFxHelperViewModel
   
-  Write-Host "Merging Api with parent"
+  Write-Host "Add-Api Step 2 - Merging API with parent"
   Merge-ResourceWithParent -ResourceViewModel $private:apiViewModel
   
+  Write-Host "Add-Api Step 3 - Fix Toc Items that should point to their folder instead of their .md"
   FixTocItemsThatShouldPointToTheirFolderInstead -ResourceViewModel $private:docFxHelperViewModel.root
 
+  Write-Host "Add-Api Step 4 - Adding Api to DocFx.json"
   ConvertTo-DocFxJson -ResourceViewModel $private:apiViewModel
 
-  Write-Host "Api $($CloneUrl) is ready"
-  }
+  Write-Host "Add-Api Done - API $($CloneUrl) is ready"  
   
+}
+
 function Add-Conceptual
 {
   param(
@@ -2071,7 +2106,7 @@ function Add-Conceptual
     [string[]]$Medias,
     [string]$ParentId
   )
-
+    
   Write-Information "Conceptual [$CloneUrl]"
   $private:a = @{
     ResourceType       = [ResourceType]::Conceptual
@@ -2086,8 +2121,10 @@ function Add-Conceptual
     HomepageUid        = $HomepageUid
     Medias             = $Medias
     ParentId           = $ParentId
-}
-  Write-Verbose "Generate Conceptual ViewModel"
+  }
+
+  Write-Host "Add-Conceptual Updating Conceptual files to make them DocFx friendly"
+  Write-Host "Add-Conceptual Step 1 - Prepare ViewModel"
   $private:conceptualViewModel = getDocFxHelperResourceViewModel @private:a
   
   $private:docFxHelperViewModel = getDocFxHelperViewModel
@@ -2095,28 +2132,32 @@ function Add-Conceptual
   setDocFxHelperResourceHierarchy -DocFxHelperViewModel $private:docFxHelperViewModel -ResourceViewModel $private:conceptualViewModel
 
   if ($null -eq $private:docFxHelperViewModel.conceptuals)
-{ 
+  {
     $private:docFxHelperViewModel.conceptuals = @()
   }
   $private:docFxHelperViewModel.all += $private:conceptualViewModel
   $private:docFxHelperViewModel.conceptuals += $private:conceptualViewModel
   
   saveDocFxHelperViewModel -ViewModel $private:docFxHelperViewModel
-  
+
+  Write-Host "Add-Conceptual Step 2 - Making markdown files DocFx friendly"
   Set-ConceptualMarkDownFiles -ViewModel $private:conceptualViewModel
 
-  Write-Host "Merging Conceptual with parent"
+  Write-Host "Add-Conceptual Step 3 - Merging Conceptual with parent"
   Merge-ResourceWithParent -ResourceViewModel $private:conceptualViewModel
 
+  Write-Host "Add-Conceptual Step 4 - Fix Toc Items that should point to their folder instead of their .md"
   FixTocItemsThatShouldPointToTheirFolderInstead -ResourceViewModel $private:docFxHelperViewModel.root
 
+  Write-Host "Add-Conceptual Step 5 - Adding Conceptual to DocFx.json"
   ConvertTo-DocFxJson -ResourceViewModel $private:conceptualViewModel
-  
-  Write-Host "Conceptual $($CloneUrl) is ready"
+
+  Write-Host "Add-Conceptual Done - Conceptual $($CloneUrl) is ready"  
+
 }
-  
+
 function Add-PowerShellModule
-  {
+{
   param(
     [Parameter(Mandatory)][Uri]$CloneUrl,
     [Parameter(Mandatory)][string]$RepoRelativePath,
@@ -2131,8 +2172,12 @@ function Add-PowerShellModule
     [string[]]$Medias,
     [string]$ParentId
   )
-    
+
   Write-Information "PowerShell Module [$CloneUrl]"
+
+  Write-Host "Add-PowerShellModule Updating PowerShell Module files to make them DocFx friendly"
+  Write-Host "Add-PowerShellModule Step 1 - Prepare ViewModel"
+
   $private:a = @{
     ResourceType       = [ResourceType]::PowerShellModule
     CloneUrl           = $CloneUrl
@@ -2147,15 +2192,15 @@ function Add-PowerShellModule
     Medias             = $Medias
     ParentId           = $ParentId
   }
-  Write-Verbose "Generate PowerShell Module ViewModel"
+  
   $private:powerShellModuleViewModel = getDocFxHelperResourceViewModel @private:a
   
   $private:docFxHelperViewModel = getDocFxHelperViewModel
 
   setDocFxHelperResourceHierarchy -DocFxHelperViewModel $private:docFxHelperViewModel -ResourceViewModel $private:powerShellModuleViewModel
-  
+
   if ($null -eq $private:docFxHelperViewModel.powerShellModules)
-    {
+  {
     $private:docFxHelperViewModel.powerShellModule = @()
   }
   $private:docFxHelperViewModel.all += $private:powerShellModuleViewModel
@@ -2163,24 +2208,30 @@ function Add-PowerShellModule
   
   saveDocFxHelperViewModel -ViewModel $private:docFxHelperViewModel
   
+  Write-Host "Add-PowerShellModule Step 2 - Making markdown files DocFx friendly"
   Set-ConceptualMarkDownFiles -ViewModel $private:powerShellModuleViewModel
 
-  Write-Host "Merging Conceptual with parent"
+  Write-Host "Add-PowerShellModule Step 3 - Merging PowerShellModule with parent"
   Merge-ResourceWithParent -ResourceViewModel $private:powerShellModuleViewModel
-  
+
+  Write-Host "Add-PowerShellModule Step 4 - Fix Toc Items that should point to their folder instead of their .md"
   FixTocItemsThatShouldPointToTheirFolderInstead -ResourceViewModel $private:docFxHelperViewModel.root
-    
+
+  Write-Host "Add-PowerShellModule Step 5 - Adding PowerShellModule to DocFx.json"
   ConvertTo-DocFxJson -ResourceViewModel $private:powerShellModuleViewModel
-    
-  Write-Host "Conceptual $($CloneUrl) is ready"
-    }
+
+  Write-Host "Add-PowerShellModule Done - PowerShellModule $($CloneUrl) is ready"    
+}
 
 function Set-Template
 {
   param([Parameter(Mandatory)]$Template, [Parameter(Mandatory)]$Target)
 
+  Write-Host "Set-Template Generating Files from ViewModel using Mustache templates"
+  Write-Host "Set-Template Step 1 - Prepare metadata"
+
   $private:saveYamlHeader = (split-path $Target -Extension) -eq ".md"
-    
+
   if ($private:saveYamlHeader)
   {
     if (Test-Path -Path $Target)
@@ -2196,7 +2247,8 @@ function Set-Template
     $private:mdMetadata.generatedOn = "$($ENV:COMPUTERNAME)"
     $private:mdMetadata.generatedBuildNumber = "$($ENV:BUILD_BUILDNUMBER)"
   }
-
+  Write-Host "Set-Template Step 2 - Run Template"
+  
   $private:resultFolder = (Split-path $Target)
 
   if (!(test-Path $private:resultFolder))
@@ -2214,5 +2266,7 @@ function Set-Template
   {
     Set-MdYamlHeader -file $Target -data $private:mdMetadata
   }
-  
-}
+
+  Write-Host "Set-Template Done - File [$($Target)] generated"
+
+} 
