@@ -140,9 +140,9 @@ var gitUrlPatternItems = {
           'generateUrl': function (gitInfo, item) {
               var url = normalizeGitUrlToHttps(gitInfo.repo);
               var path;
-              if (item.wikiPath)
+              if (item.adoWikiPath)
               {
-                  path = item.wikiPath;
+                  path = item.adoWikiPath;
               }
               else
               {
@@ -162,7 +162,7 @@ var gitUrlPatternItems = {
               }
               
             
-              // &pagePath=/Home/Product%20Lines/CEP
+              // &pagePath=/Foo/Bar
               url += '?pagePath=' + path ;
               return url;
           },
