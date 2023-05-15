@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft. All rights reserved. Licensed under the MIT license. See LICENSE file in the project root for full license information.
-// {{! DocFxHelper 0.1 - copied from DocFxHelper[2.63.1]/templates/default/common.js}}
+// {{! DocFxHelper 0.1.2 - copied from DocFxHelper[2.63.1]/templates/default/common.js}}
 //  - Added AdoWiki support
 
 exports.path = {};

@@ -35,7 +35,7 @@
     $DebugPreference = 'Continue'
 #>
 
-$DocFxHelperVersion = [version]"0.1.1"
+$DocFxHelperVersion = [version]"0.1.2"
 
 Write-Host "DocFxHelper version [$($DocFxHelperVersion)]"
 
