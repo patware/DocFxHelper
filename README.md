@@ -1,28 +1,31 @@
 # DocFxHelper
 
-Script and Template for integrating multiple [DocFx](https://dotnet.github.io/docfx/index.html) sources including Azure DevOps Wikis and multiple APIs.
+PowerShell Script and DocFx Template for integrating multiple [DocFx](https://dotnet.github.io/docfx/index.html) sources including Azure DevOps Wikis, API and PowerShell Module documentation.
 
 [DocFx](https://dotnet.github.io/docfx/index.html) is great at generating documentation from source code, but requires a good level of docFx in order to integrate documentation of multiple APIS.
 
 [DocFx](https://dotnet.github.io/docfx/index.html) can convert and integrate MarkDown files, but requires a certain skillset and tooling that is enough to discourage adopting DocFx.
 
+## Release notes
+
+Version 0.2.6
+
+[Fix] [Issue #1](https://github.com/patware/DocFxHelper/issues/1): Template coupled to specific versions of the DocFx.
+
+This fix required an important refactoring of the PowerShell script and the template in order to decouple DocFxHelper from DocFx.
+
 ## Key features
 
 - Use Azure DevOps Wiki's intuitive interface as the editor for your conceptual documentation
-- Document multiple APIs in one site
-- Integrate documentation from other repos or pipeline artifacts
-- Handle parent-child wikis
-- Document PowerShell Modules
+- Combine documentation from multiple ADO Wikis, API, PowerShell modules in one site
 
 The present version of DocFxHelper.ps1 supports the following scenarios:
 
-| Resource Type           | resources.repositories | resources.pipeline |
-|-------------------------|:----------------------:|:------------------:|
-| Ado Wiki                | Yes                    | No                 |
-| Conceptual docs         | No                     | Yes                |
-| .NET API Docs           | No                     | Yes                |
-| REST API docs           | No                     | Yes                |
-| PowerShell Modules docs | No                     | Yes                |
+- Ado Wikis
+- Conceptual docs
+- .NET API Docs
+- REST API docs
+- PowerShell Modules docs
 
 And has been tested with Azure DevOps Pipelines only.
 
@@ -33,14 +36,14 @@ Azure DevOps (ADO) Wiki is intuitive and simplifies the authoring of technical d
 The DocFxHelper script and the templates work together to make them DocFx friendly
 
 - Converts an ADO (Azure DevOps) Wiki into files that DocFx can consume
-  - Converts "Improve this docs" links from git urls to ADO Wiki urls
+  - Converts "Edit this page" links from git urls to ADO Wiki urls
   - Handles ADO Wiki mermaid graphs
   - Converts .order to toc.yml
   - Handles filenames and folders that are not DocFx friendly
   - Fixes links of the renamed files/folders
   - Converts absolute links to relative links
 
-DocFxHelper makes the proper changes to the docfx.json for you.
+DocFxHelper can even make the proper changes to the docfx.json for you.
 
 ### Multiple APIs
 
@@ -78,7 +81,7 @@ DocFx Integrate these generated markdown files, but adds the necessary elements 
 
 Download or clone this repo:
 
-- devops/DocFxHelper.ps1: use this script in your Azure DevOps Pipeline
-- src/templates/DocFxHelper: use this template to convert an Azure DevOps git url to an Azure DevOps Wiki url
+- devops/DocFxHelper.ps1: the script can be called from your Azure DevOps Pipeline
+- src/templates/DocFxHelper: the template will convert git url to an Azure DevOps Wiki url
 
 Check the [ADO pipeline](devops/README.md) for how to use the DocFxHelper.ps1
