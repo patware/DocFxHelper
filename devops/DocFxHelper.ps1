@@ -1,9 +1,29 @@
 #Requires -Version 7
-#Requires -Modules 'Posh-git', 'Powershell-Yaml', 'Poshstache'
-
+#Requires -Modules 'Posh-git', 'yayaml', 'Poshstache'
 <#
-  .SYNOPSIS Script that helps in the integration of ADO Wikis, APIs, Conceptual Documentations and PowerShell modules into DocFx
+  .SYNOPSIS
+  Helps teams merge various document sources into one site.
+  
+  .DESCRIPTION
+  Script that helps in the integration of ADO Wikis, APIs, Conceptual Documentations and PowerShell modules into DocFx
+
 #>
+
+$script:DocFxHelperVersions = @(
+    [ordered]@{version=[Version]"0.3.1"; title="Get-DocFxHelperResourcePageUidPrefix"}
+    [ordered]@{version=[Version]"0.3.2"; title="ConvertTo-DocFxAdoWiki -IsRootWiki instead of -IsChildWiki"}
+    [ordered]@{version=[Version]"0.3.3"; title="DocFxHelper is now global, and not mandatory param"}
+    [ordered]@{version=[Version]"0.3.4"; title="Re-added missing Add-Api"}
+    [ordered]@{version=[Version]"0.3.5"; title="Using PowerShell Module YaYaml instead of PowerShell-Yaml"}
+    [ordered]@{version=[Version]"0.3.5.1"; title="Adjust Differences between PowerShell-Yaml and YaYaml"}
+    [ordered]@{version=[Version]"0.3.5.2"; title="Fixed Convert AdoWiki step 1 conversion of .orders"}
+    [ordered]@{version=[Version]"0.3.6"; title="Re-worked ConvertTo-DocFxAdoWiki"}
+    [ordered]@{version=[Version]"0.3.6.1"; title="Renamed New-DocFx parameters"}
+    [ordered]@{version=[Version]"0.3.7"; title="Refactor of ConvertTo-DocFxAdoWiki - .order conversion at end of steps"}
+)
+
+$script:DocFxHelperVersion = $DocFxHelperVersions[-1]
+Write-Host "DocFxHelper.ps1 Version [$($DocFxHelperVersion.Version)] $($DocFxHelperVersion.title)"
 
 <#
   Normal mode:
@@ -23,10 +43,6 @@
     $DebugPreference = 'Continue'
 #>
 
-$DocFxHelperVersion = [version]"0.2.6"
-
-Write-Host "DocFxHelper version [$($DocFxHelperVersion)]"
-
 $baseUrl = "http://home.local"
 $baseUri = [Uri]::new($baseUrl)
 
@@ -39,7 +55,7 @@ enum ResourceType
   PowerShellModule = 4
 }
 
-$requiredModules = @("Posh-git", "Powershell-Yaml", "Poshstache")
+$requiredModules = @("Posh-git", "yayaml", "Poshstache")
 
 foreach ($requiredModule in $requiredModules)
 {
@@ -57,14 +73,14 @@ foreach ($requiredModule in $requiredModules)
 
 #region Utilities
 
-function script:Util_Get_ResourcePageUidPrefix
+function script:Get-DocFxHelperResourcePageUidPrefix
 {
-  param($relativePath)
+  param($Target)
 
-  $homeUrl = "http://home.local"
-  $homeUri = [Uri]::new($homeUrl)
-  $siteUri = [Uri]::new($homeUri, "$relativePath")
+  $fixedTarget = Util_Get_FixedTargetUri -Target $Target  
+  $siteUri = [Uri]::new($baseUri, $fixedTarget)
 
+  Write-Debug "Relative Path [$fixedTarget] has siteUri [$($siteUri)]"
   $sitePath = $siteUri.AbsolutePath
 
   $pagesUidPrefix = "$($sitePath)".Replace("\", "/").Replace("/", "_")
@@ -78,6 +94,7 @@ function script:Util_Get_ResourcePageUidPrefix
     $pagesUidPrefix = "$($pagesUidPrefix)_"
   }
   
+  Write-Debug "Pages UID Prefix for [$($fixedTarget)] is [$($pagesUidPrefix)]"
   return $pagesUidPrefix
 }
 
@@ -113,7 +130,8 @@ function script:Util_Convert_FromMdFile
   {
     Write-Debug "Markdown file has Yaml Header Markers"
     $yaml = $content[1 .. ($yamlHeaderMarkers[1].LineNumber - 2)]
-    $ret.data = ConvertFrom-Yaml -Yaml ($yaml -join "`n") -Ordered
+    
+    $ret.data = $yaml | convertfrom-Yaml
     $ret.conceptual = $content | select-object -skip $yamlHeaderMarkers[1].LineNumber
   }
 
@@ -143,7 +161,15 @@ function script:Util_Set_MdYamlHeader
     $mdFile.data[$key] = $value
   }
 
-  $content = "---`n$(ConvertTo-Yaml -Data $mdFile.data  )---`n$($mdFile.conceptual -join "`n")"
+  $dataSection = $mdFile.data | ConvertTo-Yaml -Depth 10
+  $conceptualSection = $mdFile.conceptual -join "`n"
+
+  $content = @"
+---
+$dataSection
+---
+$conceptualSection
+"@
 
   $content | set-content -LiteralPath $file.FullName
 
@@ -324,6 +350,19 @@ function script:Util_FindTocItemRecursive
     }
   }
   
+}
+
+function script:Util_Get_FixedTargetUri
+{
+  param($Target)
+ 
+  Write-Debug "Target: [$Target]"
+  $fixedTarget = (@("") + ("$($Target)".Trim().Replace("\","/") -split "/" | where-object {$_}) + @("")) -join "/"
+ 
+  Write-Debug "Target: [$FixedTarget] (fixed)"
+  $fixedTargetUri = [Uri]::new($baseUri, $fixedTarget)
+ 
+  return $fixedTargetUri
 }
 
 <#
@@ -548,7 +587,6 @@ function script:Util_Merge_HashTable
 function Add-DocFxHelperResource
 {
   param(
-    [Parameter(Mandatory)][HashTable]$DocFxHelper,
     [Parameter(Mandatory)]$Resource
   )
   
@@ -600,9 +638,9 @@ function Add-DocFxHelperResource
     Write-Warning "Resource type $($Resource.ResourceType) not recognized"
   }
   
-  $DocFxHelper = ViewModel_setDocFxHelperResourceHierarchy -DocFxHelper $DocFxHelper -ResourceViewModel $resource
+  ViewModel_setDocFxHelperResourceHierarchy -ResourceViewModel $resource
   
-  return $DocFxHelper
+  # $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
 
 }
 
@@ -612,7 +650,7 @@ function script:ViewModel_getGenericResourceViewModel
     [Parameter(Mandatory)][ResourceType]$ResourceType
     , [Parameter(Mandatory)]$Id
     , [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path    
-    , [Parameter(Mandatory)][Uri]$CloneUrl
+    , [Uri]$CloneUrl
     , $RepoBranch
     , $RepoRelativePath
     , $SubFolder
@@ -628,8 +666,7 @@ function script:ViewModel_getGenericResourceViewModel
     , $Templates
   )
   
-  $fixedTarget = (@("") + ("$($Target)".Trim().Replace("\","/") -split "/" | where-object {$_}) + @("")) -join "/"
-  $fixedTargetUri = [Uri]::new($baseUri, $fixedTarget)
+  $fixedTargetUri = Util_Get_FixedTargetUri -Target $Target
 
   $vm = [ordered]@{
     id                      = $Id
@@ -665,7 +702,7 @@ function script:ViewModel_getGenericResourceViewModel
     $vm.repoRelativePath = "/"
   }    
 
-  $vm.pagesUidPrefix = Util_Get_ResourcePageUidPrefix -relativePath $vm.target
+  $vm.pagesUidPrefix = Get-DocFxHelperResourcePageUidPrefix -Target $vm.target
 
   # if ($vm.homepage -and "$($vm.TopicUid)".Trim() -eq "")
   # {
@@ -699,9 +736,7 @@ function script:ViewModel_getGenericResourceViewModel
 
 function script:ViewModel_setDocFxHelperResourceHierarchy
 {
-  param(
-    [Parameter(Mandatory)][HashTable]$DocFxHelper,
-    [Parameter(Mandatory)]$ResourceViewModel)
+  param([Parameter(Mandatory)]$ResourceViewModel)
 
   if ($null -eq $DocFxHelper.root)
   {
@@ -751,7 +786,7 @@ function script:ViewModel_setDocFxHelperResourceHierarchy
     Write-Verbose "Resource [$($ResourceViewModel.id)] is the root and doesn't need a parent toc.yml"
   }
 
-  return $DocFxHelper
+  $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
 }
 
 function script:AddResource_ToParent
@@ -783,12 +818,12 @@ function script:AddResource_ToParent
       New-Item $ParentTocYml.Directory.FullName -itemtype Directory -Force | out-null
     }
 
-    [PSCustomObject][ordered]@{items = [System.Collections.ArrayList]::new() } | ConvertTo-Yaml -OutFile $ParentTocYml -Force
+    [PSCustomObject][ordered]@{items = [System.Collections.ArrayList]::new() } | ConvertTo-Yaml -Depth 10 | Set-Content $ParentTocYml
   }
 
   Write-Information "   ... [$($MenuDisplayName)] merging into [$($ParentTocYml)]"
 
-  $parentToc = get-content -LiteralPath $ParentTocYml.FullName | ConvertFrom-Yaml -Ordered
+  $parentToc = get-content -LiteralPath $ParentTocYml.FullName | ConvertFrom-Yaml
 
   if ($null -eq $parentToc.items)
   {
@@ -812,9 +847,20 @@ function script:AddResource_ToParent
   {
     $parentTocItem = $parentToc
   }
- 
 
-  Write-Debug "Loading for a [$($MenuDisplayName)] parent's toc"
+  if ($null -eq $parentTocItem.items)
+  {
+    $parentTocItem.items = @()
+  }
+
+  $parentTocItem_items = [System.Collections.ArrayList]::new()
+
+  if ($parentTocItem.items.count -gt 0)
+  {
+    $parentTocItem_items.AddRange($parentTocItem.items)
+  }
+
+  Write-Debug "Looking for a [$($MenuDisplayName)] in parent's toc"
   $childTocItem = DocFx_GetTocItem -Items $parentToc.items -Name $MenuDisplayName
 
   if ($null -eq $childTocItem)
@@ -824,39 +870,31 @@ function script:AddResource_ToParent
       name = $MenuDisplayName
     }
 
-    if ($null -eq $parentTocItem.items)
-    {
-      Write-Debug "but wait, the parentTocItem doesn't have an items property, adding it"
-      $parentTocItem.items = [System.Collections.ArrayList]::new()
-    }
-    else
-    {
-      Write-Debug "the parentTocItem has an items property, good"
-    }
-
     if ($MenuPosition -and $MenuPosition -ge 0)
     {
-      if ($MenuPosition -lt $parentTocItem.items.count)
+      if ($MenuPosition -lt $parentTocItem_Items.count)
       {
         Write-Debug "Inserting the toc item at desired $($MenuPosition) position"
-        $parentTocItem.items.Insert($MenuPosition, $childTocItem)
+        $parentTocItem_Items.Insert($MenuPosition, $childTocItem)
       }
       else
       {
-        Write-Debug "Appending the toc item at the bottom since the menuPosition [$($MenuPosition)] is greater or equal than the number of items [$($parentTocItem.items.count)]"
-        $parentTocItem.items.Add($childTocItem) | out-null
+        Write-Debug "Appending the toc item at the bottom since the menuPosition [$($MenuPosition)] is greater or equal than the number of items [$($parentTocItem_Items.count)]"
+        [void]$parentTocItem_Items.Add($childTocItem)
       }
     }
     else
     {
       Write-Debug "Appending the toc item at the bottom since the menuPosition was not provided"
-      $parentTocItem.items.Add($childTocItem) | out-null
+      [void]$parentTocItem_Items.Add($childTocItem)
     }
   }
   else
   {
     Write-Debug "a toc item already exists in the parent's toc.yml, no need to create a new one."
   }
+
+  $parentTocItem.items = $parentTocItem_Items
   
   Push-Location (Split-Path $ParentTocYml)
   $ResourceRelativePath = (Resolve-Path $ResourcePath -relative)
@@ -895,9 +933,9 @@ function script:AddResource_ToParent
     $childTocItem.Remove("uid")
   }
 
-  Write-Debug "Toc Item: `r`n$($childTocItem | ConvertTo-Yaml)"
+  Write-Debug "Toc Item: `r`n$($childTocItem | ConvertTo-Yaml -Depth 3)"
   
-  $parentToc | ConvertTo-Yaml -OutFile $ParentTocYml -Force
+  $parentToc | ConvertTo-Yaml -depth 10 | Set-Content $ParentTocYml
 
   if ($Passthru)
   {
@@ -929,7 +967,7 @@ function script:DocFx_AddViewModel
     [Parameter(Mandatory)][System.IO.FileInfo]$Path,
     [Parameter(Mandatory)]$Meta)
   
-  Write-Information "Adding resource to docfx"
+  Write-Information "Adding resource to $($Path.Name)"
 
   Write-Verbose "Loading docFx.json [$($Path)]"
   $docfx = get-content -Path $Path | ConvertFrom-Json -AsHashtable
@@ -942,17 +980,17 @@ function script:DocFx_AddViewModel
   
   #>
  
-  if ($meta.DocFx.Content)
+  if ($meta.build.Content)
   {
-    $docfx.build.content += $meta.DocFx.Content
+    $docfx.build.content += $meta.build.Content
   }
 
-  if ($meta.DocFx.Resource)
+  if ($meta.build.Resource)
   {
-    $docfx.build.resource += $meta.DocFx.Resource
+    $docfx.build.resource += $meta.build.Resource
   }
 
-  if ($meta.DocFx.FileMetadata._gitContribute)
+  if ($meta.build.FileMetadata._gitContribute)
   {
     if ($null -eq $docfx.build.fileMetadata)
     {
@@ -964,9 +1002,8 @@ function script:DocFx_AddViewModel
       $docfx.build.fileMetadata._gitContribute = [ordered]@{}
     }
     
-    $docfx.build.fileMetadata._gitContribute."$($meta.DocFx.FileMetadata._gitContribute.Pattern)" = $meta.DocFx.FileMetadata._gitContribute.Value
+    $docfx.build.fileMetadata._gitContribute."$($meta.build.FileMetadata._gitContribute.Pattern)" = $meta.build.FileMetadata._gitContribute.Value
   }
-
   
   <#
 
@@ -1045,10 +1082,6 @@ function script:Util_MoveMdFile
 
   $mdFile = Move-Item $Source -Destination $Destination -PassThru
 
-  # TODO: Confirm if needed
-  # Write-Verbose "Saving NewAbsolutePath in md file's Yaml Header"
-  # Util_Set_MdYamlHeader -file $mdFile -key "AbsolutePath" -value $NewAbsolutePath
-
   return $mdFile
 }
 
@@ -1087,7 +1120,7 @@ function script:DocFx_FixTocItemsThatShouldPointToTheirFolderInstead
 
     #>
 
-    $tocItems = Get-Content -LiteralPath $tableOfContent_yml.FullName | ConvertFrom-yaml -Ordered
+    $tocItems = Get-Content -LiteralPath $tableOfContent_yml.FullName | ConvertFrom-yaml
 
     push-location (split-Path $tableOfContent_yml)
 
@@ -1139,10 +1172,10 @@ function script:DocFx_FixTocItemsThatShouldPointToTheirFolderInstead
                 if (Test-Path (join-Path $tocItemHrefItem.Basename -childPath "toc.yml"))
                 {
                   Write-Information "href $($tocItem.href) points to a file in the current folder, and a toc.yml found in a sub folder with the file's base name.  Update required"
-                  Write-Debug "TocItem Before:`r`n$($tocItem | ConvertTo-yaml)"
+                  Write-Debug "TocItem Before:`r`n$($tocItem | ConvertTo-yaml -depth 3)"
                   $tocItem.homepage = $tocItem.href
                   $tocItem.href = "$(split-Path $tocItem.href -LeafBase)/toc.yml"  
-                  Write-Debug "TocItem After:`r`n$($tocItem | ConvertTo-yaml)"
+                  Write-Debug "TocItem After:`r`n$($tocItem | ConvertTo-yaml -depth 3)"
                 }
                 else
                 {
@@ -1167,7 +1200,7 @@ function script:DocFx_FixTocItemsThatShouldPointToTheirFolderInstead
       }
     }
 
-    $tocItems | ConvertTo-yaml -OutFile $tableOfContent_yml -Force
+    $tocItems | ConvertTo-yaml -Depth 10 | Set-Content $tableOfContent_yml
 
     pop-location
 
@@ -1183,7 +1216,7 @@ function script:DocFx_FixRootTocItemsToReferenceTOCs
   
   $tableOfContent_yml = join-path -path $Path.FullName -ChildPath "toc.yml"
 
-  $tocItems = Get-Content -LiteralPath $tableOfContent_yml | ConvertFrom-yaml -Ordered
+  $tocItems = Get-Content -LiteralPath $tableOfContent_yml | ConvertFrom-yaml
 
   $tocItemsQueue = [System.Collections.Queue]::new()
 
@@ -1206,7 +1239,7 @@ function script:DocFx_FixRootTocItemsToReferenceTOCs
     }
   }
 
-  $tocItems | ConvertTo-yaml -OutFile $tableOfContent_yml -Force
+  $tocItems | ConvertTo-yaml -Depth 10 | Set-Content $tableOfContent_yml
 
 }
 function script:DocFx_GetTocItem
@@ -1375,7 +1408,7 @@ function script:AdoWiki_GetAdoWikiFolders
   return $folders
 }
 
-function script:AdoWiki_ConvertFromWikiOrder
+function script:AdoWiki_ConvertFromWikiOrderFOOFOO
 {
   param([System.IO.FileInfo]$Order)
 
@@ -1429,84 +1462,205 @@ function script:AdoWiki_ConvertFromWikiOrder
 
 }
 
-
-
-function script:AdoWiki_ConvertOrderItemsTo_DocFxToc
+<#
+  .SYNOPSIS
+  Converts ADO Wiki .Order items
+#>
+function ConvertFrom-AdoWikiOrderItem
 {
-  <#
-    .SYNOPSIS
-    Converts an imported .order orderItems to DocFx toc.yml
-
-    .DESCRIPTION 
-
-    The .order orderItems are of format
-
-      orderItem           = $orderItem
-      display             = [System.Web.HttpUtility]::UrlDecode($orderItem.Replace("-", " "))
-      orderItemMd         = "$($orderItem).md"
-
-  #>
+  [CmdletBinding()]
   param(
-    [Parameter(Mandatory)][String]$tocYmlPath,
-    [Parameter(Mandatory)][Uri]$TocUri,
-    $OrderItems
+    [System.IO.FileInfo]$Path
   )
 
-  Write-Debug "[AdoWiki_ConvertOrderItemsTo_DocFxToc] Number of toc items: $($OrderItems.Count)"
-  
-  $tocItems = [System.Collections.ArrayList]::new()
-  
-  foreach ($orderItem in $OrderItems)
-  {
-    <#
-      $orderItem = $OrderItems | select-object -first 1
-      $orderItem = $OrderItems | select-object -first 1 -skip 3
-    #>
+  begin {
+    $ret = [System.Collections.ArrayList]::new()
+  }
 
-    Write-Debug "OrderItem: $($orderItem.display)"
+  process {    
+    
+    $OrderItems = Get-Content $Path
 
-    $tocItem = [ordered]@{
-      name = $orderItem.display
-      href = $orderItem.orderItemMd
-    }
-
-    <#
-      Resolve-TocItem -tocYmlPath $tocYmlPath -TocUri $TocUri -TocItem $tocItem
-    #>
-
-    $resolved = Resolve-TocItem -tocYmlPath $tocYmlPath -TocUri $TocUri -TocItem $tocItem
-
-    if ($null -eq $resolved.toc_yml_path -and $null -eq $resolved.file_md_subFolder_path)
+    foreach($orderItem in $OrderItems)
     {
-      $tocItem.href = $resolved.file_md_path
+      <#
+        $orderItem = $OrderItems | select-object -first 1
+        $orderItem
+      #>
+
+      $item = [ordered]@{
+        orderItem = $orderItem
+        orderItem_folder_path = Join-Path $Path.Directory.FullName -ChildPath "$($orderItem)/"
+        orderItem_mdFile_path = Join-Path $Path.Directory.FullName -ChildPath "$($orderItem).md"
+      }
+
+      [void]$ret.Add([PSCustomObject]$item)
     }
-    else
+  }
+
+  end {
+    return $ret.ToArray()  
+  }
+}
+
+function script:ConvertTo-DocFxTocItem
+{
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory, ValueFromPipeline)][PSCustomObject[]]$Items,
+    [Parameter(Mandatory)]$Metadata,
+    [Parameter(Mandatory)][Uri]$RelativeDotOrderUri
+  )
+
+  begin{
+    $ret = [System.Collections.ArrayList]::new()
+  }
+
+  process{
+
+    foreach($item in $Items)
     {
-      if ($null -eq $resolved.toc_yml_path)
-      {
-        $tocItem.href = "$($resolved.file_md_subFolder_path)\"
-      }
-      else
-      {
-        $tocItem.href = $resolved.toc_yml_path
+      <#
+        $item = $Items | select-object -first 1
+        $item
+      #>
+
+      $toc_item = [ordered]@{
+        name = $item.orderItem
+        href = "$((split-path $item.orderItem_mdFile_path -leaf))"
       }
 
-      if ($resolved.file_md_path)
-      {
-        $tocItem.homepage = $resolved.file_md_path
-      }
+      [void]$ret.Add($toc_item)
     }
-    Write-Debug "$($orderItem.display) becomes $($tocItem | convertto-json -compress)"
-
-    $tocItems.Add([PSCustomObject]$tocItem) | out-null
 
   }
 
-  return @{
-    items = $tocItems
+  end{
+    return $ret.ToArray()
   }
 
 }
+
+function script:Join-DocFxTocItems
+{
+  param(
+    [Parameter(Mandatory, Position=0)]$tocItems, 
+    [Parameter(Mandatory, Position=1)]$otherTocItems
+  )
+
+  $ret = [System.Collections.ArrayList]::new()
+ 
+  if ($tocItems)
+  {
+    $ret.AddRange($tocItems)
+  }
+
+  foreach($otherTocItem in $otherTocItems)
+  {
+    if ($ret | where-object {$_.name -eq $otherTocItem.name})
+    {
+      Write-Warning "Duplicate toc item name found: $($otherTocItem.name).  href=[$($otherTocItem.href)] Last one wins."
+      $dup = $ret | where-object {$_.name -eq $otherTocItem.name} | select-object -first 1
+      $dup_index = $ret.IndexOf($dup)      
+      $ret.RemoveAt($dup_index)
+      $ret.Insert($dup_index, $otherTocItem)
+    }
+    else
+    {
+      [void]$ret.Add($otherTocItem)
+    }
+  }
+  
+  return $ret.ToArray()
+}
+
+function script:Set-DocFxToc
+{
+  param($tocItems)
+  {
+
+  }
+}
+
+# function script:AdoWiki_ConvertOrderItemsTo_DocFxToc
+# {
+#   <#
+#     SYNOPSIS
+#     Converts an imported .order orderItems to DocFx toc.yml
+
+#     DESCRIPTION 
+
+#     The .order orderItems are of format
+
+#       orderItem           = $orderItem
+#       display             = [System.Web.HttpUtility]::UrlDecode($orderItem.Replace("-", " "))
+#       orderItemMd         = "$($orderItem).md"
+
+#   #>
+#   param(
+#     [Parameter(Mandatory)][String]$tocYmlPath,
+#     [Parameter(Mandatory)][Uri]$TocUri,
+#     $OrderItems
+#   )
+
+#   Write-Debug "[AdoWiki_ConvertOrderItemsTo_DocFxToc] Number of toc items: $($OrderItems.Count)"
+  
+#   $tocItems = [System.Collections.ArrayList]::new()
+  
+#   foreach ($orderItem in $OrderItems)
+#   {
+#     <#
+#       $orderItem = $OrderItems | select-object -first 1
+#       $orderItem = $OrderItems | select-object -first 1 -skip 3
+#     #>
+
+#     Write-Debug "OrderItem: $($orderItem.display)"
+
+#     $tocItem = [ordered]@{
+#       name = $orderItem.display
+#       href = $orderItem.orderItemMd
+#     }
+
+#     <#
+#       Resolve-TocItem 
+#       $tocYmlPath = $tocYmlPath 
+#       $TocUri = $TocUri 
+#       $TocItem = $tocItem
+#     #>
+
+#     $resolved = Resolve-TocItem -tocYmlPath $tocYmlPath -TocUri $TocUri -TocItem $tocItem
+
+#     if ($null -eq $resolved.toc_yml_path -and $null -eq $resolved.file_md_subFolder_path)
+#     {
+#       $tocItem.href = $resolved.file_md_path
+#     }
+#     else
+#     {
+#       if ($null -eq $resolved.toc_yml_path)
+#       {
+#         $tocItem.href = "$($resolved.file_md_subFolder_path)\"
+#       }
+#       else
+#       {
+#         $tocItem.href = $resolved.toc_yml_path
+#       }
+
+#       if ($resolved.file_md_path)
+#       {
+#         $tocItem.homepage = $resolved.file_md_path
+#       }
+#     }
+#     Write-Debug "$($orderItem.display) becomes $($tocItem | convertto-json -compress)"
+
+#     $tocItems.Add([PSCustomObject]$tocItem) | out-null
+
+#   }
+
+#   return @{
+#     items = $tocItems
+#   }
+
+# }
 
 
 function script:AdoWiki_Get_MdSections
@@ -2169,7 +2323,272 @@ function Resolve-TocItem
   return [PSCustomObject]$ret
 }
 
-function script:AdoWiki_ConvertAdoWiki_ToDocFx
+#endregion
+
+#region Conceptual
+function Set-ConceptualYamlHeader
+{
+  param([Parameter(Mandatory)][System.IO.FileInfo]$File, [Parameter(Mandatory)][Uri]$docurl)
+
+  Write-Debug "[Set-ConceptualYamlHeader]"
+  Write-Debug " Conceptual file: [$($File)]"
+  Write-Debug "          docurl: [$($docurl)]"
+
+  Util_Set_MdYamlHeader -file $File -key "docurl" -value $docurl.AbsoluteUri
+
+}
+
+#endregion
+
+#region PowerShellModules
+
+#endregion
+
+function New-DocFx
+{
+  [cmdletbinding()]
+  param(
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Target,
+    [Parameter(Mandatory, ParameterSetName="String")][string]$BaseDocFxConfig,
+    [Parameter(Mandatory, ParameterSetName="File")][System.IO.FileInfo]$BaseDocFxPath
+  )
+
+  process
+  {
+    $docfx_json = join-path $Target -ChildPath "docfx.json"
+    Write-Debug "docfx will be [$($docfx_json)]"
+
+    if ($BaseDocFxPath)
+    {
+      Write-Verbose "Copying [$BaseDocFxPath] to [$Target]"      
+      copy-item $BaseDocFxPath -Destination $docfx_json -Force
+
+      $docfxInSource = Get-content $BaseDocFxPath | ConvertFrom-Json -AsHashtable
+
+      foreach($template in $docfxInSource.build.template)
+      {
+        <#
+          $template = $docfxInSource.build.template | select-object -first 1
+          $template = $docfxInSource.build.template | select-object -first 1 -skip 1
+        #>
+        $templatePath = Join-Path $BaseDocFxPath.Directory -ChildPath "Templates" -AdditionalChildPath $template
+
+        if (Test-Path $templatePath)
+        {
+          $Destination = Join-Path $Target.Directory -ChildPath "Templates" -AdditionalChildPath $template
+          Write-Host "Copying Template [$template] to [$Destination]"
+          & robocopy $templatePath $Destination /MIR
+          
+        }
+      }
+    }
+    else
+    {
+      Write-Verbose "Saving provided Base DocFx Config string to [$docfx_json]"
+      $BaseDocFxConfig | set-content $docfx_json
+    }
+
+    $global:DocFxHelper = [ordered]@{
+      docFx = @{
+        Path = "$((Get-Item $docfx_json).FullName)"
+      }
+      all = @()
+    }
+
+    if ($DebugPreference -eq 'Continue')
+    {
+      Write-Debug "DocFxHelper.json:"
+      $DocFxHelper | ConvertTo-Json -Depth 4 | Write-Debug
+    }
+
+    $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path $Target -ChildPath "docfxhelper.json")
+
+  }
+
+}
+
+function Add-ToRenameMap
+{
+    param([Parameter(Mandatory)]$Map, [Parameter(Mandatory)]$metadata)
+
+    $metadata.FileIsRenamed = $true
+    $metadata.DocFxSafe = AdoWiki_GetDocFxSafeItemMetadata -mdFile $metadata.File
+
+    $renameMapItem = $Map | where-object {$_.From.FileAbsolutePath -eq $metadata.AdoWiki.FileAbsolute}
+
+    if ($null -eq $renameMapItem)
+    {
+      Write-Debug "Adding $($metadata.AdoWiki.LinkAbsoluteMd) to RenameMap list"
+
+      $renameMapItem = [ordered]@{
+        metadata = $metadata
+        from = @{
+          FileAbsolutePath = $metadata.AdoWiki.File.FullName
+          LinkAbsoluteMd = $metadata.AdoWiki.LinkAbsoluteMd
+        }
+        to = @{
+          FileAbsolutePath = $metadata.File.FullName
+          LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
+        }
+      }
+
+      [void]$Map.Add([PSCustomObject]$renameMapItem)
+    }
+    else
+    {
+      Write-Debug "Updating RenameMap item"
+      Write-Debug "Before:"
+      Write-Debug "  File Absolute Path: $($renameMapItem.to.FileAbsolutePath)"
+      Write-Debug "  Link Absolute md: $($renameMapItem.to.FileAbsolutePath)"
+      $renameMapItem.to.FileAbsolutePath = $metadata.File.FullName
+      $renameMapItem.to.LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
+      Write-Debug "After:"
+      Write-Debug "  File Absolute Path: $($renameMapItem.to.FileAbsolutePath)"
+      Write-Debug "  Link Absolute md: $($renameMapItem.to.FileAbsolutePath)"
+    }
+}
+function Move-MdFile
+{
+    param([Parameter(Mandatory)]$metadata, [Parameter(Mandatory)][System.IO.FileInfo]$ToPath)
+
+    # $metadata.File = Rename-Item -Path $metadata.AdoWiki.FileAbsolute -NewName $metadata.DocFxSafe.FileName -Force -PassThru
+
+    Write-Debug "Moving mdFile"
+    Write-Debug "  From: $($metadata.File.FullName)"
+    Write-Debug "    To: $($ToPath)"
+
+    if (!$ToPath.Directory.Exists)
+    {
+        $ToPath.Directory.Create()
+    }
+
+    $ToPath_toc_yml = Join-Path $ToPath.Directory -ChildPath "toc.yml"
+
+    if (!(Test-Path $ToPath_toc_yml))
+    {
+      Write-Debug "Creating empty toc.yml [$ToPath_toc_yml]"
+      [ordered]@{items = @()} | ConvertTo-Yaml | set-content $ToPath_toc_yml
+    }
+
+    $metadata.File = Move-Item $metadata.File -Destination $ToPath -Force -PassThru
+}
+
+function Get-AdoWikiTocItem
+{
+  param(
+    [Parameter(Mandatory)][string]$DisplayName, 
+    [Parameter(Mandatory)][System.IO.FileInfo]$DotOrderPath,
+    [Parameter(Mandatory)]$Metadata,
+    [switch]$IsRootWiki
+  )
+
+  Write-Debug "Get-AdoWikiTocItem for order item [$($DisplayName)]"
+  Write-Debug ".order: [$($DotOrderPath)]"
+  Write-Debug "mdFile: [$($metadata.File.FullName)]"
+
+  $ret = [ordered]@{
+    name = $DisplayName
+  }
+
+  if ($Metadata)
+  {
+    $mdFile = $Metadata.File
+    
+    if ($Metadata.FileIsRenamed)
+    {
+      Write-Debug "Metadata provided, but has moved"
+      Write-Debug "mdFile was originally: [$($Metadata.AdoWiki.File)]"
+      Write-Debug "mdFile now known as:   [$($MetaData.File.FullName)]"
+    }
+    else
+    {
+      Write-Debug "Metadata provided, using the last known location of the mdFile"
+      Write-Debug "mdFile: [$($MetaData.File.FullName)]"
+    }
+  }
+  else
+  {
+    Write-Debug "Metadata not provided, looking for a file with the .order item [$($DisplayName)] near [$($DotOrderPath)]"
+    
+    $mdFile = Get-ChildItem -Path $DotOrderPath.Directory -Filter "$($DisplayName).md" | select-object -first 1
+  }
+
+  if ($mdFile)
+  {
+    $dotOrderFolder = $DotOrderPath.Directory
+    $mdFileFolder = (split-path -Path $mdFile)
+    $dotOrderIsRoot = $dotOrderFolder.FullName -eq (get-location).Path
+
+    if ($mdFileFolder -eq $dotOrderFolder.FullName)
+    {
+      if ($isRootWiki -and $dotOrderIsRoot -and $mdFile.name -eq "index.md")
+      {
+        Write-Verbose "  md File is the default site's page, index.md from the root folder of the root wiki.  This toc item is therefor ignored"
+        $ret = $nul
+      }
+      else
+      {
+        Write-Verbose "md File is the same folder as the .order"
+
+        $mdFileBaseNameFolder = Join-Path $mdFile.Directory -ChildPath $mdFile.BaseName
+
+        if ([System.IO.Directory]::Exists($mdFileBaseNameFolder))
+        {
+          Write-Verbose "but found a folder with the mdFile's BaseName, so href to toc.yml + homepage to mdfile"
+          $ret.href = "$($mdFile.BaseName)/toc.yml"
+          $ret.homepage = "$($mdFile.Name)"
+          Write-Verbose "href: $($ret.href)"
+          Write-Verbose "homepage: $($ret.homepage)"
+        }
+        else
+        {
+          Write-Verbose "didn't find a folder with the mdFile's BaseName, so href is the mdFile"
+          $ret.href = $mdFile.Name
+          Write-Verbose "href: $($ret.href)"
+        }
+      }
+    }
+    else
+    {
+      Write-Verbose "mdFile is in a different folder than the .order"
+
+      $mdFolderRelativeToDotOrder = Resolve-Path -Path $mdFileFolder -Relative -RelativeBasePath $dotOrderFolder.FullName
+
+      if ($isRootWiki -and $dotOrderIsRoot)
+      {
+        Write-Verbose ".order is in the root folder of the root wiki, removing toc.yml from href, keeping trailing \"
+        $ret.href = "$($mdFolderRelativeToDotOrder)\"
+      }
+      else
+      {
+        $ret.href = "$($mdFolderRelativeToDotOrder)\toc.yml"
+      }
+      Write-Verbose "href: $($ret.href)"
+
+      if ($mdFile.Name -eq "index.md")
+      {
+        Write-Debug "mdFile is index.md, removing the filename from path"
+        $mdFileHomepageFilename = ""
+      }
+      else
+      {
+        $mdFileHomepageFilename = "$($mdFile.Name)"
+      }
+      $ret.homepage = "$($mdFolderRelativeToDotOrder)\$($mdFileHomepageFilename)"
+      Write-Debug "homepage: $($ret.homepage)"
+    }
+  }
+  else
+  {
+    Write-Debug "Metadata is empty for item [$($DisplayName)] and [$($DotOrderPath)]"
+    $ret.href = "$($DisplayName).md"
+    Write-Debug "href: $($ret.href)"
+  }
+
+  return $ret
+}
+
+function ConvertTo-DocFxAdoWiki
 {
   <#
     .SYNOPSIS
@@ -2177,54 +2596,42 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
 
     .DESCRIPTION
       Steps performed
-        1. Convert every .order to toc.yml
-        2. Set Yaml Headers
+        1. Set Yaml Headers
           a. adoWikiAbsolutePath
           b. DocFxHelperOrginalFileAbsolute
-        3. Prepare Hyperlinks
+        2. Prepare Hyperlinks
           a. Update wiki links removing escapes \(->( and \)->)
           b. Convert relative links to absolute
-        4. Rename [md Files] to DocFx safe name format
-        5. Rename [Folders] to DocFx safe name format
-        6. Moving Root [md Files] that should actually be in their subfolder
-        7. Set toc.yml Items files that should point to their folder instead of their .md
-        8. Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml
-        9. Finalize Hyperlinks
+        3. Rename [md Files] to DocFx safe name format
+        4. Rename [Folders] to DocFx safe name format
+        5. Moving Root [md Files] that should actually be in their subfolder
+        6. Finalize Hyperlinks
           a. Update wiki links to .md extension
           b. Update wiki links to match the renamed mdFiles or folder
           c. Convert absolute links to relative
-        10. Update Mermaid Code Delimiters
-        11. Set each page's UID      
-      
+        7. Update Mermaid Code Delimiters
+        8. Set each page's UID      
+        9. Convert every .order to toc.yml
+        obsolete 10. Set toc.yml Items files that should point to their folder instead of their .md
+        obsolete 11. Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml
+
   #>
 
   param(
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path
-    , [Parameter(Mandatory)][bool]$IsChildWiki
-    , [Parameter(Mandatory)][string]$AdoWikiUrl
-    , [Parameter(Mandatory)][Uri]$TargetUri
     , [string]$PagesUidPrefix
-    , [string]$DocFxDestination
-    , [switch]$PassThru
     , [switch]$UseModernTemplate
+    , [switch]$IsRootWiki
+    , $AllMetadataExportPath
   )
  
   Write-Host "Updating AdoWiki [$Path] to make it DocFx friendly"
-  Write-Debug "Is Child Wiki: $($IsChildWiki)"
-
-  if ($IsChildWiki)
-  {
-    $Depth = 1
-  }
-  else
-  {
-    $Depth = 0
-  }
+  Write-Debug "Is Child Wiki: $($IsRootWiki)"
     
   push-location $Path
 
   $workingDirectory = (Get-Location)
-  
+
   $renameMap = [System.Collections.ArrayList]::new()
   
   $folders = AdoWiki_GetAdoWikiFolders -Path . -Exclude @(".git", ".attachments")
@@ -2233,110 +2640,10 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
   Write-Host "Wiki [$($Path)]"
   Write-Host "   Folder Count: $($folders.Count)"
   Write-Host "   File count: $($allMetadata.Count)"
+  
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [1/11] Convert every .order to toc.yml"
-
-  Write-Debug "     - a. Creating a toc.yml for each .order found - needed for step b"
-  foreach ($folder in $folders)
-  {
-    $dot_order = (Join-Path $folder.FullName -ChildPath ".order")
-    $toc_yml = (Join-Path $folder.Fullname -ChildPath "toc.yml")
-    if (Test-Path -LiteralPath $dot_order)
-    {
-      $dotOrders += $dot_order
-      new-item -Path $toc_yml -ItemType File -Value "items: []"
-    }
-  }
-  
-  Write-Debug "     - b. Convert .orders to toc.yml"
-  foreach ($folder in $folders)
-  {
-    <#
-      $folder = $folders | select-object -first 1
-      $folder = $folders | select-object -first 1 -skip 1
-    #>
-
-    $dot_order = (Join-Path $folder.FullName -ChildPath ".order")
-    $toc_yml = (Join-Path $folder.Fullname -ChildPath "toc.yml")
-
-    if (Test-Path -LiteralPath $dot_order)
-    {
-      Write-Verbose $dot_order
-      $dot_order = Get-Item -LiteralPath (Join-Path $folder.FullName -ChildPath ".order")
-  
-      # $Order = $order
-      # $MetadataItems = $metadataItemsInFolder
-      $adoWikiOrder = AdoWiki_ConvertFromWikiOrder -Order $dot_order
-      $totalDepth = $Depth + $folder.Fullname.substring($workingDirectory.Path.Length).split("$([IO.Path]::DirectorySeparatorChar)").count - 1
-  
-      if (($adoWikiOrder.orderItems | select-object -first 1).orderItem -eq "Index")
-      {
-        $orderItemsExceptIndex = $adoWikiOrder.orderItems | select-object -skip 1
-      }
-      else
-      {
-        $orderItemsExceptIndex = $adoWikiOrder.orderItems 
-      }
- 
-  
-      $TocUri = [Uri]::new($TargetUri, $toc_Yml.Substring($workingDirectory.Path.Length+1))
-      <#
-
-        $tocYmlPath = $toc_yml
-        $TocUri = $TocUri
-        $OrderItems = $orderItemsExceptIndex 
-        $depth = $depth
-
-      #>
-      $orderToc = AdoWiki_ConvertOrderItemsTo_DocFxToc -tocYmlPath $toc_yml -TocUri $TocUri -OrderItems $orderItemsExceptIndex
-    }
-    else
-    {
-      $orderToc = @{items = @() }
-    }
-
-    if (Test-Path -LiteralPath $toc_yml)
-    {
-      $toc = Get-Content -LiteralPath $toc_yml | convertfrom-Yaml -Ordered
-    }
-    else
-    {
-      $toc = [ordered]@{}
-    }
-
-    if ($null -eq $toc.items)
-    {
-      $toc.items = [System.Collections.ArrayList]::new()
-    }
-    
-
-    if ($orderToc.Items.Count -gt 0)
-    {
-      Write-Debug "Merging $($orderToc.Items.Count) order items from $($dot_order) into $($toc_yml)"
-
-      foreach($orderTocItem in $orderToc.Items)
-      {
-        <#a
-          $orderTocItem = $orderToc.Items | select-object -first 1
-        #>
-  
-        $tocItem = $toc.items | where-object {$_.Name -eq $orderTocItem.name}
-  
-        if (!$tocItem)
-        {
-          $toc.items.Add($orderTocItem) | out-null
-        }
-      }
-    }
-
-    ConvertTo-Yaml $toc -OutFile (Join-Path $folder.Fullname -ChildPath "toc.yml") -Force
-  }
-
-
-
-  # ------------------------------------------------------------------------
-  Write-Host "   - [2/11] Set Yaml Headers"
+  Write-Host "   - [1/9] Set Yaml Headers"
   Write-Verbose "     - adoWikiAbsolutePath"
   Write-Verbose "     - DocFxHelperOrginalFileAbsolute"
   foreach ($metadata in $allMetadata)
@@ -2355,12 +2662,10 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
     # the only way to map a renamed/move mdFile to its original metadata
     Util_Set_MdYamlHeader -file $metadata.File -key "DocFxHelperOrginalFileAbsolute" -value $metadata.AdoWiki.FileAbsolute
 
-    # TODO: Confirm if needed
-    #Util_Set_MdYamlHeader -file $metadata.File -key "AbsolutePath" -value $metadata.AdoWiki.FileAbsolute
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [3/11] Prepare Hyperlinks"
+  Write-Host "   - [2/9] Prepare Hyperlinks"
   Write-Verbose "     - a. Update wiki links removing escapes \(->( and \)->)"
   Write-Verbose "     - b. Convert relative links to absolute"
 
@@ -2388,7 +2693,7 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
 
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [4/11] Rename [md Files] to DocFx safe name format"
+  Write-Host "   - [3/9] Rename [md Files] to DocFx safe name format"
   foreach ($metadata in $allMetadata | where-object {$_.RenameRequired})
   {
     <#
@@ -2398,68 +2703,16 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
 
     Write-Verbose "   - File $($metadata.AdoWiki.Filename) is not DocFx safe, rename required"
 
-    $metadataDocFxSafeLinkAbsoluteBefore = $metadata.File.FullName.SubString($workingDirectory.Path.Length).Replace("\", "/")
-    $metadata.File = Rename-Item -Path $metadata.AdoWiki.FileAbsolute -NewName $metadata.DocFxSafe.FileName -Force -PassThru
-    $metadata.FileIsRenamed = $true
-    $metadata.DocFxSafe = AdoWiki_GetDocFxSafeItemMetadata -mdFile $metadata.File
+    #$metadataDocFxSafeLinkAbsoluteBefore = $metadata.File.FullName.SubString($workingDirectory.Path.Length).Replace("\", "/")
+    #$metadata.File = Rename-Item -Path $metadata.AdoWiki.FileAbsolute -NewName $metadata.DocFxSafe.FileName -Force -PassThru
 
-    $renameMapItem = $renameMap | where-object {$_.From.FileAbsolutePath -eq $metadata.AdoWiki.FileAbsolute}
-
-    if ($null -eq $renameMapItem)
-    {
-      Write-Debug "Adding $($metadata.AdoWiki.LinkAbsoluteMd) to RenameMap list"
-
-      $renameMap.Add([PSCustomObject]@{
-        metadata = $metadata
-        from = @{
-          FileAbsolutePath = $metadata.AdoWiki.File.FullName
-          LinkAbsoluteMd = $metadata.AdoWiki.LinkAbsoluteMd
-        }
-        to = @{
-          FileAbsolutePath = $metadata.File.FullName
-          LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
-        }
-      }) | Out-Null
-    }
-    else
-    {
-      Write-Debug "Updating RenameMap item with that uri:"
-      Write-Debug "  from: $($renameMapItem.from.LinkAbsoluteMd)"
-      Write-Debug "    to (before): $($metadataDocFxSafeLinkAbsoluteBefore)"
-      $renameMapItem.to.FileAbsolutePath = $metadata.File.FullName
-      $renameMapItem.to.LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
-      Write-Debug "    to (now): $($renameMapItem.to.LinkAbsoluteMd)"
-
-    }
-
+    Move-MdFile -Metadata $metadata -ToPath $metadata.DocFxSafe.FileName
+    Add-ToRenameMap -Map $renameMap -Metadata $metadata
     Util_Set_MdYamlHeader -file $metadata.File -key "DocFxSafeFileName" -value $metadata.File.Name
-
-    $toc_yaml = (join-Path $metadata.File.Directory.FullName -childPath "toc.yml")
-    $toc = get-content -LiteralPath $toc_yaml | ConvertFrom-yaml -Ordered
-
-    $tocItem = $toc.items | where-object { ($null -ne $_.href -and (split-path $_.href -leaf) -eq $metadata.AdoWiki.FileName) -or ($null -ne $_.homepage -and (split-path $_.homepage -leaf) -eq $metadata.AdoWiki.FileName) }
-
-    if ($tocItem)
-    {
-      if ((split-path $tocItem.href -leaf) -eq $metadata.AdoWiki.File.Name)
-      {
-        $tocItem.href = $metadata.File.Name
-      }
-      else
-      {
-        $tocItem.homepage = $metadata.File.Name
-      }
-    }
-    else
-    {
-      Write-Warning "$($metadata.AdoWiki.File.FullName) not found in $toc_yaml"
-    }
-
-    ConvertTo-Yaml -Data $toc -OutFile $toc_yaml -Force
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [5/11] Rename [Folders] to DocFx safe name format"
+  Write-Host "   - [4/9] Rename [Folders] to DocFx safe name format"
   $foldersMetadata = [System.Collections.ArrayList]::new()
   foreach ($folder in $folders)
   {
@@ -2500,289 +2753,55 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
       {
         <#
           $mdFile = AdoWiki_GetAdoWikiFolders -Path $newFolder -Exclude @(".git", ".attachments") | AdoWiki_GetWikiMarkdowns | select-object -first 1
-          
+          $mdFile
         #>
 
         $mdFileYaml = Util_Get_MdYamlHeader -file $mdFile
-
         $metadata = $allMetadata | where-object {$_.AdoWiki.FileAbsolute -eq $mdFileYaml.DocFxHelperOrginalFileAbsolute}
-        $metadataDocFxSafeLinkAbsoluteBefore = $metadata.File.FullName.SubString($workingDirectory.Path.Length).Replace("\", "/")
-        $metadata.File = $mdFile
-        $metadata.FileIsRenamed = $true        
-        $metadata.DocFxSafe = AdoWiki_GetDocFxSafeItemMetadata -mdFile $metadata.File
-
-        $renameMapItem = $renameMap | where-object {$_.From.FileAbsolutePath -eq $metadata.AdoWiki.FileAbsolute}
-
-        if ($null -eq $renameMapItem)
-        {
-          Write-Debug "Adding $($metadata.AdoWiki.LinkAbsoluteMd) to RenameMap list"
+        $metadata.file = $mdFile
+        
+        Add-ToRenameMap -Map $renameMap -Metadata $metadata
     
-          $renameMap.Add([PSCustomObject]@{
-            metadata = $metadata
-            from = @{
-              FileAbsolutePath = $metadata.AdoWiki.File.FullName
-              LinkAbsoluteMd = $metadata.AdoWiki.LinkAbsoluteMd
-            }
-            to = @{
-              FileAbsolutePath = $metadata.File.FullName
-              LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
-            }
-          }) | Out-Null
-        }
-        else
-        {
-          Write-Debug "Updating RenameMap item with that uri:"
-          Write-Debug "  from: $($renameMapItem.from.LinkAbsoluteMd)"
-          Write-Debug "    to (before): $($metadataDocFxSafeLinkAbsoluteBefore)"
-          $renameMapItem.to.FileAbsolutePath = $metadata.File.FullName
-          $renameMapItem.to.LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
-          Write-Debug "       to (now): $($renameMapItem.to.LinkAbsoluteMd)"
-        }
-    
-        Util_Set_MdYamlHeader -file $metadata.File -key "DocFxSafeFileName" -value $metadata.File.Name
-
-
       }
+    }
+  }
 
-      $renameMap.Add([PSCustomObject]@{
-          from = "/$($oldName)/"
-          to   = "/$($newName)/"
-        }) | Out-Null
+  # ------------------------------------------------------------------------
+  Write-Host "   - [5/9] Moving Root [md Files] that should actually be in their subfolder"
+  if ($UseModernTemplate -and $IsRootWiki)
+  {    
 
-      $toc_yaml = join-Path $folderMetadata.Folder.Parent.FullName -ChildPath "toc.yml"
-      $toc = get-content -LiteralPath $toc_yaml | ConvertFrom-Yaml -Ordered
-
-      foreach ($tocItem in $toc.items)
-      {
+    $rootMdFiles = Get-Childitem -path . -filter "*.md" | where-object {$_.Name -ne "index.md"}
+    
+    foreach($mdFile in $rootMdFiles)
+    {
         <#
-          $tocItem = $toc.items | select-object -first 1
-          $tocItem = $toc.items | select-object -first 1 -skip 1
-          $tocItem = $toc.items | select-object -first 1 -skip 2
+            $mdFile = $rootMdFiles | select-object -first 1
+            $mdFile
         #>
-        if ($tocItem.href.StartsWith(".\$($oldName)\"))
-        {
-          $segments = $tocItem.href.split("\")
-          $segments[1] = $newName
-          $tocItem.href = $segments -join "\"
-        }
+        $mdFileYaml = Util_Get_MdYamlHeader -file $mdFile
+        $metadata = $allMetadata | where-object {$_.AdoWiki.FileAbsolute -eq $mdFileYaml.DocFxHelperOrginalFileAbsolute}
+        $moveTo = Join-Path $metadata.File.Directory.FullName -ChildPath $metadata.File.BaseName -AdditionalChildPath "index.md"
+        <#
+            $Metadata = $metadata
+            $ToPath = $moveTo
+        #>
+        Move-MdFile -Metadata $metadata -ToPath $moveTo
+        
+        <#
+            $Map = $renameMap         
+        #>
+        Add-ToRenameMap -Map $renameMap -Metadata $metadata
 
-        if ("$($tocItem.homepage)".StartsWith(".\$($oldName)\"))
-        {
-          $segments = $tocItem.homepage.split("\")
-          $segments[1] = $newName
-          $tocItem.homepage = $segments -join "\"
-        }
-
-      }
-
-      ConvertTo-Yaml -Data $toc -OutFile $toc_yaml -Force
-
-    }
-  }
-
-  # ------------------------------------------------------------------------
-  Write-Host "   - [6/11] Moving Root [md Files] that should actually be in their subfolder"
-  if ($IsChildWiki)
-  {
-    Write-Verbose "     ... [6/11] Moving Root [md Files] that should actually be in their subfolder - This is a child wiki, skipping..."
+    }  
   }
   else
   {
-
-    $tableOfContent_yml = get-childitem -path . -filter "toc.yml"
-
-    $tocUri = [Uri]::new($baseUri, (Resolve-Path $tableOfContent_yml.FullName -Relative) )
-
-    $tocItems = Get-Content -LiteralPath $tableOfContent_yml.FullName | ConvertFrom-yaml -Ordered
-
-    if ($tocItems.items)
-    {
-      $tocItemsItems = $tocItems.items
-    }
-    else
-    {
-      $tocItemsItems = $tocItems
-    }
-
-
-    foreach($tocItem in $tocItemsItems)
-    {
-      <#
-        $tocItemsItems | foreach-object {[PSCustomObject]$_}
-
-        $tocItem = $tocItemsItems | select-object -first 1
-        $tocItem = $tocItemsItems | select-object -first 1 -skip 1
-
-        $tocItem
-      #>
-
-      $move = @{
-        Required = $false
-        FromFoldername = $null
-        FromMdFilename = $null
-        FromAbsoluteUri = $null
-        ToFoldername = $null
-        ToMdFilename = $null
-        ToAbsoluteUri = $null
-      }
-
-      $resolvedTocItem = Resolve-TocItem -tocYmlPath $tableOfContent_yml -TocUri $tocUri -TocItem $tocItem
-
-      <#
-        $resolvedTocItem = [ordered]@{
-          toc_yml_Path           = ".\foo\toc.yml" # if exists
-          file_md_Path           = ".\foo.md"      # if exists
-          file_md_SubFolder_Path = ".\foo"         # if exists
-        }
-
-        $resolvedTocItem.file_md_Path = ".\foo.md"
-        $resolvedTocItem.file_md_Path = ".\foo\foo.md"
-        $resolvedTocItem.file_md_SubFolder_Path = ".\foo"
-        $resolvedTocItem.file_md_SubFolder_Path = "."
-        }
-      #>
-
-      if ($null -ne $resolvedTocItem.file_md_path -and $null -ne $resolvedTocItem.file_md_SubFolder_Path -and (split-path $resolvedTocItem.file_md_path) -ne $resolvedTocItem.file_md_SubFolder_Path)
-      {
-        
-        Write-Verbose "Scenario 5: tociItem.href pointing to folder under root and tocItem.homepage pointing to file at root - move file under folder, update tocitem.homepage"
-  
-        $move.Required = $true
-        $move.FromFoldername = $workingDirectory.Path
-        $move.FromMdFilename = Split-Path $resolvedTocItem.file_md_path -Leaf
-        $move.ToFoldername = $resolvedTocItem.file_md_subFolder_Path
-        $safeUri = [Uri]::new($baseUri, $tocItem.homepage)
-        if ((Split-Path $tocItem.homepage -Leaf) -ne $safeUri.Segments[-1])
-        {
-          Write-Warning "orderitem.Homepage specifies [$((Split-Path $tocItem.homepage -leaf))] which is different than the expected safeName [$($safeUri.Segments[-1])], the target filename will be renamed at the same time.  The homepage should have been renamed already."
-        }
-        $move.ToMdFilename = $safeUri.Segments[-1]
-          
-      }
-      elseif ("$($tocItem.href)".EndsWith(".md"))
-      {          
-        if (Test-Path (($tocItem.href.Replace("\", "/").Split("/") | where-object {$_}) -join "\"))          
-        {
-          $tocItemRelativePath = Resolve-Path (($tocItem.href.Replace("\", "/").Split("/") | where-object {$_}) -join "\") -Relative
-          $tocItemLeafPath = ".\$(Split-Path $tocitem.href -leaf)"
-          
-          if ($tocItemRelativePath -eq $tocItemLeafPath -and (Test-Path (Split-Path $tocitem.href -LeafBase)))
-          {
-            $move.Required = $true
-            $move.FromFoldername = $workingDirectory.Path
-            $move.FromMdFilename = Split-Path $tocItem.href -Leaf
-            $move.ToFoldername = Split-Path $tocItem.href -LeafBase
-            $safeUri = [Uri]::new($baseUri, $tocItem.href)
-            $move.ToMdFilename = $safeUri.Segments[-1]
-            $tocItem.href = "$(Split-Path $tocitem.href -LeafBase)/toc.yml"
-  
-          }
-        }
-      }
-        
-      if ($move.Required)
-      {
-        Write-Verbose "File: $($move.FromMdFilename) needs to be moved to it's folder"
-        $newFileName = (join-path $move.ToFoldername -childPath $move.ToMdFilename)
-
-        if (Test-Path $newFileName)
-        {
-          Write-Verbose "But wait, there's already a file named $($move.ToMdFilename) in folder $($move.ToFoldername)."
-
-          $newFileName = (join-path $move.ToFoldername -childPath "index.md") 
-
-          if (Test-path $newFileName)
-          {
-            Write-Verbose "ho, and there's also an index.md file"
-            $newFileName = (Join-Path $move.ToFoldername -ChildPath "$($move.ToFoldername)_$($move.ToMdFilename)")
-            if (Test-Path $newFileName)
-            {
-              Write-Verbose "Really?, there's even a file with the foldername/foldername_filename"
-
-              $i = 0
-
-              do
-              {
-                $newFileName = Join-Path $move.ToFoldername -childPath "$($move.ToFoldername).$i.md"
-                Write-Verbose "trying $newFileName"
-                $i++
-              }while(Test-Path $newFileName)
-
-              Write-verbose "Finally, will going with $newFileName"
-            }
-          }
-        }
-
-        $move.ToMdFilename = $newFilename    
-        $move.ToAbsoluteUri = [Uri]::new($baseUri, $move.ToMdFilename)
-
-        $mdFile = Util_MoveMdFile -Source $move.FromMdFilename -Destination $move.ToMdFilename -NewAbsolutepath $move.ToAbsoluteUri.AbsolutePath
-
-        $tocItem.href = "$(($move.ToAbsoluteUri.Segments | select-object -skip 1 | select-object -skiplast 1) -join "/")toc.yml"
-        $tocItem.homepage = $move.ToAbsoluteUri.AbsolutePath.Substring(1)
-
-        $metadata = $allMetadata | where-object {$_.File.FullName -eq (Join-Path $tableOfContent_yml.Directory.FullName -ChildPath $move.FromMdFilename)}
-        $metadataDocFxSafeLinkAbsoluteBefore = $metadata.File.FullName.SubString($workingDirectory.Path.Length).Replace("\", "/")
-        $metadata.File = $mdFile
-        $metadata.FileIsRenamed = $true
-        $metadata.DocFxSafe = AdoWiki_GetDocFxSafeItemMetadata -mdFile $metadata.File
-
-        $renameMapItem = $renameMap | where-object {$_.From.FileAbsolutePath -eq $metadata.AdoWiki.FileAbsolute}
-
-        if ($null -eq $renameMapItem)
-        {
-          Write-Debug "Adding $($metadata.AdoWiki.LinkAbsoluteMd) to RenameMap list"
-    
-          $renameMap.Add([PSCustomObject]@{
-            metadata = $metadata
-            from = @{
-              FileAbsolutePath = $metadata.AdoWiki.File.FullName
-              LinkAbsoluteMd = $metadata.AdoWiki.LinkAbsoluteMd
-            }
-            to = @{
-              FileAbsolutePath = $metadata.File.FullName
-              LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
-            }
-          }) | Out-Null
-        }
-        else
-        {
-          Write-Debug "Updating RenameMap item with that uri:"
-          Write-Debug "  from: $($renameMapItem.from.LinkAbsoluteMd)"
-          Write-Debug "    to (before): $($metadataDocFxSafeLinkAbsoluteBefore)"
-          $renameMapItem.to.FileAbsolutePath = $metadata.File.FullName
-          $renameMapItem.to.LinkAbsoluteMd = $metadata.DocFxSafe.LinkAbsolute
-          Write-Debug "    to (now): $($renameMapItem.to.LinkAbsoluteMd)"
-    
-        }
-    
-        Util_Set_MdYamlHeader -file $metadata.File -key "DocFxSafeFileName" -value $metadata.File.Name
-
-      }
-    }
-  
-    Write-Verbose "Saving changes to $tableOfContent_yml"
-    $tocItems | ConvertTo-yaml -OutFile $tableOfContent_yml -Force
-      
+    Write-Host "     ... [5/9] Moving Root [md Files] that should actually be in their subfolder ----- This is either a child wiki or a doesn't use Modern Template, skipping..."
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [7/11] Set toc.yml Items files that should point to their folder instead of their .md"
-  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $Path
-  
-  Write-Debug "----------------------------------------------"
-  Write-Host  "   - [8/11] Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml"
-  if ($IsChildWiki)
-  {
-    Write-Host  "   - [8/11] Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml - This is a Child Wiki, Skipping..."
-  }
-  else
-  {
-    DocFx_FixRootTocItemsToReferenceTOCs -Path $Path
-  }
-
-  # ------------------------------------------------------------------------
-  Write-Host "   - [9/11] Finalize Hyperlinks"
+  Write-Host "   - [6/9] Finalize Hyperlinks"
   Write-Verbose "     - a. Update wiki links to .md extension"
   Write-Verbose "     - b. Update wiki links to match the renamed mdFiles or folder"
   Write-Verbose "     - c. Convert absolute links to relative"
@@ -2819,7 +2838,7 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
 
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [10/11] Update Mermaid Code Delimiters"
+  Write-Host "   - [7/9] Update Mermaid Code Delimiters"
   foreach ($metadata in $allMetadata)
   {
     $mdFile = $metadata.File
@@ -2828,69 +2847,438 @@ function script:AdoWiki_ConvertAdoWiki_ToDocFx
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [11/11] Set each page's UID"
+  Write-Host "   - [8/9] Set each page's UID"
   foreach ($metadata in $allMetadata)
   {
-    $mdFile = $metadata.File
 
-    $pageUID = Util_Get_PageUid -pagesUidPrefix $PagesUidPrefix -mdfile $mdFile
-    Util_Set_MdYamlHeader -file $mdFile -key "uid" -value $pageUID    
+    $pageUID = Util_Get_PageUid -pagesUidPrefix $PagesUidPrefix -mdfile $metadata.File
+    Util_Set_MdYamlHeader -file $metadata.File -key "uid" -value $pageUID    
   }
 
-  pop-location # target
-
-  if ($PassThru)
+  if ($AllMetadataExportPath)
   {
-    $ret = [ordered]@{
-      Path = (Resolve-Path $Path.FullName -Relative)
-      IsChildWiki = $IsChildWiki
-      PagesUidPrefix = $PagesUidPrefix
-      MetaData = $allMetadata
-      DocFx = @{
-        Content = [ordered]@{
-          files = @("**/*.yml", "**/*.md")
-          src = (Resolve-Path $Path.FullName -Relative)
-        }
-        Resource = [ordered]@{
-          files = @(".attachments/**")
-          src   = (Resolve-Path $Path.FullName -Relative)
-        }
-        FileMetadata = @{
-          _gitContribute = [ordered]@{
-            Pattern = "$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/")
-            Value = [ordered]@{
-              AdoWikiUri = $AdoWikiUrl
-            }
-          }
+    New-Item $AllMetadataExportPath -ItemType File -Force
+    $allMetadata | ConvertTo-Json -Depth 6 | set-content $AllMetadataExportPath
+  }
+
+  # ------------------------------------------------------------------------
+  Write-Host "   - [9/9] Convert every .order to toc.yml"
+
+  
+  Write-Debug "     - b. Convert .orders to toc.yml"
+  foreach ($folder in $folders)
+  {
+    <#
+      $folder = $folders | select-object -first 1
+      $folder = $folders | select-object -first 1 -skip 1
+      $folder = $folders | select-object -first 1 -skip 2
+      $folder = $folders | select-object -first 1 -skip 3
+      $folder
+    #>
+
+    $dot_order = (Join-Path $folder.FullName -ChildPath ".order")
+    $toc_yml = (Join-Path $folder.Fullname -ChildPath "toc.yml")
+
+    $docfx_toc_items = [System.Collections.ArrayList]::new()
+
+    if (Test-Path -LiteralPath $dot_order)
+    {
+      Write-Verbose $dot_order
+
+      $dot_order_uri = [Uri]::new($baseUri, (Resolve-Path -Path $dot_order -Relative -RelativeBasePath $workingDirectory))
+      $orderItems = Get-Content $dot_order
+      <#
+        $orderItems
+      #>
+
+      $s = @{}
+      if ($isRootWiki)
+      {
+        $s.IsRootWiki = $isRootWiki
+      }
+
+      foreach($orderItem in $orderItems)
+      {
+        <#
+          $orderItem = $orderItems | select-object -first 1
+          $orderItem = $orderItems | select-object -first 1 -skip 1
+          $orderItem = $orderItems | select-object -first 1 -skip 2
+          $orderItem
+        #>
+        $item_uri = [Uri]::new($dot_order_uri, $orderItem)
+        $metadata = $allMetadata | where-object {$_.AdoWiki.LinkAbsolute -eq $item_uri.AbsolutePath}
+
+        <#
+          $displayName = $orderItem 
+          $DotOrderPath = [System.IO.FileInfo]$dot_order
+          $metadata.File.Fullname
+          $isRootWiki = [switch]$true
+        #>
+
+        $docfx_toc_item = Get-AdoWikiTocItem -displayName $orderItem -Metadata $metadata -DotOrderPath $dot_order @s
+
+        if ($null -ne $docfx_toc_item)
+        {
+          [void]$docfx_toc_items.Add($docfx_toc_item)
         }
       }
     }
     
-    if ($DocFxDestination)
+    if (Test-Path -LiteralPath $toc_yml)
     {
-      $ret.DocFx.Content.dest = $DocFxDestination -split "/" | where-object {$_} | Join-String -Separator "/"
-      $ret.DocFx.Resource.dest = $DocFxDestination -split "/" | where-object {$_} | Join-String -Separator "/"
+      Write-Verbose "Reading items from [$toc_yml]"
+      $toc = Get-Content -LiteralPath $toc_yml | convertfrom-Yaml
     }
-    return [PSCustomObject]$ret
+    else
+    {
+      $toc = [ordered]@{}
+    }
+
+    if ($null -eq $toc.items)
+    {
+      $toc.items = @()
+    }
+
+    if ($docfx_toc_items.Count -gt 0)
+    {
+      if ($toc.items.Count -gt 0)
+      {
+        Write-Debug "Merging items from [.order] into existing [$toc_yml]"
+        $toc.items = Join-DocFxTocItems -tocItems $toc.items -otherTocItems $docfx_toc_items
+      }
+      else
+      {
+        $toc.items = $docfx_toc_items.ToArray()
+      }
+    }
+    
+    Write-Debug "Saving toc to [$toc_yml]"
+    $toc | ConvertTo-Yaml -Depth 10 | Set-Content $toc_yml
   }
+
+  # # ------------------------------------------------------------------------
+  # Write-Host "   - [10/11] Set toc.yml Items files that should point to their folder instead of their .md"
+  # DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $Path
+  
+  # Write-Host  "   - [11/11] Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml"
+  # Write-Debug "----------------------------------------------"
+  # if ($IsRootWiki)
+  # {
+  #   DocFx_FixRootTocItemsToReferenceTOCs -Path $Path
+  # }
+  # else
+  # {
+  #   Write-Host  "   - [11/11] Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml - This is a Child Wiki, Skipping..."
+  # }
+
+
+
+  pop-location
+
 }
 
-#endregion
+function Add-AdoWiki {
+  param(
+      [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
+      [Parameter(Mandatory)][string]$Id,
+      [Parameter(Mandatory)][Uri]$CloneUrl,
+      [Parameter(Mandatory)][Uri]$WikiUrl,
+      [string]$Target,
+      [string]$MenuParentItemName,
+      [string]$MenuDisplayName,
+      [int]$MenuPosition,
+      [string]$Homepage,
+      [string]$MenuUid,
+      [string[]]$Excludes,
+      [string]$WikiDocsSubfolder,
+      [string[]]$Medias,
+      [string]$ParentId
+  )
 
-#region Conceptual
-function Set-ConceptualYamlHeader
+  Write-Debug "----------------------------------------------"
+  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
+  Write-Debug "Path:     [$Path]"
+  Write-Debug "Id:       [$Id]"
+  Write-Debug "CloneUrl: [$CloneUrl]"
+  Write-Debug "WikiUrl:  [$WikiUrl]"
+
+  Push-Location (split-path $DocFxHelper.docFx.Path)
+
+  Write-Debug "----------------------------------------------"
+  Write-Host "Prepare ViewModel $Path"
+  $a = @{
+      ResourceType       = [ResourceType]::Wiki
+      Id                 = $Id
+      Path               = $Path.FullName
+      CloneUrl           = $CloneUrl
+      SubFolder          = $WikiDocsSubfolder
+      Target             = $Target
+      MenuParentItemName = $MenuParentItemName
+      MenuDisplayName    = $MenuDisplayName
+      MenuPosition       = $MenuPosition
+      Homepage           = $Homepage
+      MenuUid            = $MenuUid
+      Medias             = $Medias
+      ParentId           = $ParentId
+      Excludes           = $Excludes
+  }    
+  $viewModel = ViewModel_getGenericResourceViewModel @a
+
+  Write-Debug "----------------------------------------------"
+  Write-Debug "Add resource specific details to Resource ViewModel"
+  $viewModel.wikiUrl = "$WikiUrl"
+  $viewModel.isRootWiki = ("$($viewModel.target)" -eq "/")
+  $viewModel.medias += ".attachments"
+
+  Write-Debug "----------------------------------------------"
+  Write-Debug "Add Resource ViewModel to DocFxHelper"
+  Add-DocFxHelperResource -Resource $viewModel
+
+
+  if (-not $viewModel.isRootWiki) {
+      Write-Host "This is a Child Wiki"
+      
+      if ($viewModel.menuDisplayName) {
+          Write-Debug "----------------------------------------------"
+          Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+          AddResource_ToParent `
+              -ParentTocYml $viewModel.parentToc_yml `
+              -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+              -ResourcePath $viewModel.Path `
+              -MenuParentItemName $viewModel.MenuParentItemName `
+              -MenuDisplayName $viewModel.MenuDisplayName `
+              -MenuPosition $viewModel.menuPosition `
+              -HomePage $viewModel.homepage `
+              -MenuUid $viewModel.MenuUid
+      }
+      else {
+          Write-Debug "----------------------------------------------"
+          Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+      }    
+  }
+
+  $adoWikiMeta = [ordered]@{
+    Build = [ordered]@{
+      Content      = [ordered]@{
+          files = @("**/*.yml", "**/*.md")
+          src   = (Resolve-Path $Path.FullName -Relative)
+      }
+      Resource     = [ordered]@{
+          files = @(".attachments/**")
+          src   = (Resolve-Path $Path.FullName -Relative)
+      }
+
+      FileMetadata = @{
+          _gitContribute = [ordered]@{
+              Pattern = "$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/")
+              Value   = [ordered]@{
+                  AdoWikiUri = $viewModel.wikiUrl
+              }        
+          }
+      }
+    }
+  }
+
+  if ($viewModel.Target) 
+  {
+      $adoWikiMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
+      $adoWikiMeta.Build.Resource.dest = "$(($viewModel.Target -split "/" | where-object {$_}) -join "/")/.attachments"
+  }
+
+  if ($viewModel.SubFolder)
+  {
+      $adoWikiMeta.Build.FileMetadata._gitContribute.Value.RelativePath = $viewModel.SubFolder
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host "Adding Resource to DocFx.json"
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $adoWikiMeta
+  
+  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
+
+  Pop-Location
+}
+
+function Add-DotnetApi
 {
-  param([Parameter(Mandatory)][System.IO.FileInfo]$File, [Parameter(Mandatory)][Uri]$docurl)
+  param(
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
+    [Parameter(Mandatory)][string]$Id,
+    [string]$Target,
+    [string]$MenuParentItemName,
+    [string]$MenuDisplayName,
+    [int]$MenuPosition,
+    [string]$MenuUid,
+    [string[]]$Excludes,
+    [string[]]$Medias,
+    [string]$ParentId
+  )
 
-  Write-Debug "[Set-ConceptualYamlHeader]"
-  Write-Debug " Conceptual file: [$($File)]"
-  Write-Debug "          docurl: [$($docurl)]"
+  Write-Debug "----------------------------------------------"
+  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
+  Write-Debug "Path:     [$Path]"
+  Write-Debug "Id:       [$Id]"
 
-  Util_Set_MdYamlHeader -file $File -key "docurl" -value $docurl.AbsoluteUri
+  Push-Location (split-path $DocFxHelper.docFx.Path)
+  
+  Write-Debug "----------------------------------------------"
+  Write-Host "Prepare ViewModel $Path"
+  $a = @{
+    ResourceType       = [ResourceType]::Api
+    Id                 = $Id
+    Path               = $Path.FullName    
+    Target             = $Target
+    MenuParentItemName = $MenuParentItemName
+    MenuDisplayName    = $MenuDisplayName
+    MenuPosition       = $MenuPosition
+    MenuUid            = $MenuUid
+    Medias             = $Medias
+    ParentId           = $ParentId
+  }
+  $viewModel = ViewModel_getGenericResourceViewModel @a
+  
+  
+  Write-Debug "----------------------------------------------"
+  Write-Debug "Add Resource ViewModel to DocFxHelper"
+  Add-DocFxHelperResource -Resource $viewModel
+  
+  if ($viewModel.menuDisplayName) {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+    AddResource_ToParent `
+      -ParentTocYml $viewModel.parentToc_yml `
+      -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+      -ResourcePath $viewModel.Path `
+      -MenuParentItemName $viewModel.MenuParentItemName `
+      -MenuDisplayName $viewModel.MenuDisplayName `
+      -MenuPosition $viewModel.menuPosition `
+      -HomePage $viewModel.homepage `
+      -MenuUid $viewModel.MenuUid
+  }
+  else {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+  }
 
+  Write-Debug "----------------------------------------------"
+  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"  
+  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
+  
+  $dotnetApiMeta = [ordered]@{
+    Build = [ordered]@{
+      Content      = [ordered]@{
+          files = @("**/*.yml", "**/*.md")
+          src   = (Resolve-Path $Path.FullName -Relative)
+      }
+    }
+  }
+
+  if ($viewModel.Target -ne "/")
+  {
+    $dotnetApiMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
+  }
+
+
+  Write-Debug "----------------------------------------------"
+  Write-Host "Adding Resource to DocFx.json"
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $dotnetApiMeta
+  
+  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
+
+  pop-location
+  return $DocFxHelper
 }
 
-function Set-ConceptualMarkdownFiles
+function Add-RestApi
+{
+  param(
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
+    [Parameter(Mandatory)][string]$Id,
+    [string]$Target,
+    [string]$MenuParentItemName,
+    [string]$MenuDisplayName,
+    [int]$MenuPosition,
+    [string]$MenuUid,
+    [string[]]$Excludes,
+    [string[]]$Medias,
+    [string]$ParentId
+  )
+
+  Write-Debug "----------------------------------------------"
+  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
+  Write-Debug "Path:     [$Path]"
+  Write-Debug "Id:       [$Id]"
+
+  Push-Location (split-path $DocFxHelper.docFx.Path)
+  
+  Write-Debug "----------------------------------------------"
+  Write-Host "Prepare ViewModel $Path"
+  $a = @{
+    ResourceType       = [ResourceType]::Api
+    Id                 = $Id
+    Path               = $Path.FullName    
+    Target             = $Target
+    MenuParentItemName = $MenuParentItemName
+    MenuDisplayName    = $MenuDisplayName
+    MenuPosition       = $MenuPosition
+    MenuUid            = $MenuUid
+    Medias             = $Medias
+    ParentId           = $ParentId
+  }
+  $viewModel = ViewModel_getGenericResourceViewModel @a
+  
+  
+  Write-Debug "----------------------------------------------"
+  Write-Debug "Add Resource ViewModel to DocFxHelper"
+  Add-DocFxHelperResource -Resource $viewModel
+  
+  if ($viewModel.menuDisplayName) {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+    AddResource_ToParent `
+      -ParentTocYml $viewModel.parentToc_yml `
+      -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+      -ResourcePath $viewModel.Path `
+      -MenuParentItemName $viewModel.MenuParentItemName `
+      -MenuDisplayName $viewModel.MenuDisplayName `
+      -MenuPosition $viewModel.menuPosition `
+      -HomePage $viewModel.homepage `
+      -MenuUid $viewModel.MenuUid
+  }
+  else {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"  
+  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
+  
+  $restApiMeta = [ordered]@{
+    Build = [ordered]@{
+      Content      = [ordered]@{
+          files = @("**/*swagger.json")
+          src   = (Resolve-Path $Path.FullName -Relative)
+      }
+    }
+  }
+
+  if ($viewModel.Target -ne "/")
+  {
+    $restApiMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host "Adding Resource to DocFx.json"
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $restApiMeta
+  
+  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
+
+  pop-location
+  return $DocFxHelper
+}
+
+function ConvertTo-DocFxConceptual
 {
   param(
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
@@ -2900,7 +3288,7 @@ function Set-ConceptualMarkdownFiles
     [string]$RepoRelativePath = "/"
   )
 
-  Write-Host "[Set-ConceptualMarkdownFiles]"
+  Write-Host "[ConvertTo-DocFxConceptual]"
   Write-Host "   Conceptual path: [$($Path)]"
   Write-Host "          CloneUrl: [$($CloneUrl)]"
   Write-Host "            Branch: [$($RepoBranch)]"
@@ -2930,368 +3318,19 @@ function Set-ConceptualMarkdownFiles
 
     Set-ConceptualYamlHeader -File $mdFile -DocUrl $docUrl.AbsoluteUri
   }
-  pop-location
-
-}
-#endregion
-
-#region PowerShellModules
-function Set-PowerShellModulesMarkdownFiles
-{
-  param(
-    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
-    [Parameter(Mandatory)][Uri]$CloneUrl, 
-    [Parameter(Mandatory)][string]$PagesUidPrefix,
-    [string]$RepoBranch = "main",
-    [string]$RepoRelativePath = "/"
-  )
-
-  Write-Host "[Set-PowerShellModulesMarkdownFiles]"
-  Write-Host "   Conceptual path: [$($Path)]"
-  Write-Host "          CloneUrl: [$($CloneUrl)]"
-  Write-Host "    PagesUidPrefix: [$($PagesUidPrefix)]"
-  Write-Host "            Branch: [$($RepoBranch)]"
-  Write-Host "Repo relative path: [$($RepoRelativePath)]"
-      
-  Push-Location $Path
-  
-  $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse
-  
-  Write-Host "$($mdFiles.count) PowerShell Module markdown files found"
-  
-  foreach ($mdFile in $mdFiles)
-  {
-    <#
-      $mdFile = $mdFiles | select-object -first 1
-      $mdFile 
-    #>
-    <#
-      $File = $mdfile
-    #>
-
-    $pageUid = Util_Get_PageUid -pagesUidPrefix $PagesUidPrefix -mdfile $mdFile    
-    Util_Set_MdYamlHeader -file $mdFile -key "uid" -value $pageUid
-
-    $pageYamlHeaders = Util_Get_MdYamlHeader -file $mdFile
-
-    if ($pageYamlHeaders.sourceurl)
-    {
-      Write-Debug "sourceurl property already set - skipping"
-    }
-    elseif ($pageYamlHeaders.docurl)
-    {
-      Write-Debug "docurl property already set - skipping"
-    }
-    else
-    {
-      if ($pageYamlHeaders.repoPath)
-      {
-        $repoPath = $pageYamlHeaders.repoPath
-      }
-      else
-      {
-        $repoPath = (Join-Path $RepoRelativePath -ChildPath (Resolve-Path $mdFile -Relative).Substring(2)).Replace("\", "/")
-      }
-
-      if ($pageYamlHeaders.lineStart -and $pageYamlHeaders.lineStart -gt 0)
-      {
-          $lineDetails="&line=$($pageYamlHeaders.lineStart)&lineEnd=$($pageYamlHeaders.lineStart+1)&lineStartColumn=1&lineEndColumn=1&lineStyle=plain"
-      }
-      $url = [Uri]::new($CloneUrl, "?path=$($repoPath)&version=GB$($RepoBranch)$($lineDetails)&_a=contents")
-
-      if ($pageYamlHeaders."Module Name")
-      {
-        Write-Debug "sourceurl is [$($url)]"
-        Util_Set_MdYamlHeader -file $mdFile -key "sourceurl" -value $url.AbsoluteUri
-      }
-      else
-      {
-        Write-Debug "docurl is [$($url)]"
-        Util_Set_MdYamlHeader -file $mdFile -key "docurl" -value $url.AbsoluteUri
-      }
-    }
-  }
-  pop-location
-}
-#endregion
-
-function New-DocFx
-{
-  [cmdletbinding()]
-  param(
-    [Parameter(Mandatory)][System.IO.FileInfo]$Target,
-    [Parameter(Mandatory, ParameterSetName="String")][string]$DocFx,
-    [Parameter(Mandatory, ParameterSetName="File")][System.IO.FileInfo]$ConfigFile
-  )
-
-  process
-  {
-    if ($ConfigFile)
-    {
-      Write-Verbose "Copying $ConfigFile to $Target"
-      copy-item $ConfigFile -Destination $Target
-
-      $d = Get-content $ConfigFile | ConvertFrom-Json -AsHashtable
-
-      foreach($template in $d.build.template)
-      {
-        <#
-          $template = $d.build.template | select-object -first 1
-          $template = $d.build.template | select-object -first 1 -skip 1
-        #>
-        $templatePath = Join-Path $ConfigFile.Directory -childPath $template
-
-        if (Test-Path $templatePath)
-        {
-          Write-Host "Copying Template [$template] to [$($Target.Directory)]"
-          $Destination = Join-Path $Target.Directory -ChildPath $template
-          Copy-Item $templatePath -Destination $Destination -Recurse
-        }
-      }
-    }
-    else
-    {
-      Write-Verbose "Saving DocFx to $Target"
-      $DocFx | set-content $Target
-    }
-
-    
-
-
-    [ordered]@{
-      docFx = @{
-        Path = $Target.FullName
-      }
-      all = @()
-    }
-  }
-
-}
-
-function Add-AdoWiki
-{
-  param(
-    [Parameter(Mandatory, ValueFromPipeline)][HashTable]$DocFxHelper,
-    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
-    [Parameter(Mandatory)][string]$Id,
-    [Parameter(Mandatory)][Uri]$CloneUrl,
-    [Parameter(Mandatory)][Uri]$WikiUrl,
-    [string]$Target,
-    [string]$MenuParentItemName,
-    [string]$MenuDisplayName,
-    [int]$MenuPosition,
-    [string]$Homepage,
-    [string]$MenuUid,
-    [string[]]$Excludes,
-    [string]$WikiDocsSubfolder,
-    [string[]]$Medias,
-    [string]$ParentId,
-    [switch]$ModernTemplate
-  )
-
-  Write-Debug "----------------------------------------------"
-  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
-  Write-Debug "Path:     [$Path]"
-  Write-Debug "Id:       [$Id]"
-  Write-Debug "CloneUrl: [$CloneUrl]"
-  Write-Debug "WikiUrl:  [$WikiUrl]"
-
-  Push-Location (split-path $DocFxHelper.docFx.Path)
-
-  Write-Debug "----------------------------------------------"
-  Write-Host "Prepare ViewModel $Path"
-  $a = @{
-    ResourceType       = [ResourceType]::Wiki
-    Id                 = $Id
-    Path               = $Path.FullName
-    CloneUrl           = $CloneUrl
-    SubFolder          = $WikiDocsSubfolder
-    Target             = $Target
-    MenuParentItemName = $MenuParentItemName
-    MenuDisplayName    = $MenuDisplayName
-    MenuPosition       = $MenuPosition
-    Homepage           = $Homepage
-    MenuUid            = $MenuUid
-    Medias             = $Medias
-    ParentId           = $ParentId
-    Excludes           = $Excludes
-  }    
-  $viewModel = ViewModel_getGenericResourceViewModel @a
-
-  Write-Debug "----------------------------------------------"
-  Write-Debug "Add resource specific details to Resource ViewModel"
-  $viewModel.wikiUrl = "$WikiUrl"
-  $viewModel.isChildWiki = ("$($viewModel.target)" -ne "/")
-  $viewModel.medias += ".attachments"
-
-  Write-Debug "----------------------------------------------"
-  Write-Debug "Add Resource ViewModel to DocFxHelper"
-  $DocFxHelper = Add-DocFxHelperResource -DocFxHelper $DocFxHelper -Resource $viewModel
-
-  Write-Debug "----------------------------------------------"
-  Write-Host "Convert Resource to DocFx"
-  #AdoWiki_ConvertAdoWiki_ToDocFx -Path $viewModel.Path -IsChildWiki $viewModel.IsChildWiki -PagesUidPrefix $viewModel.pagesUidPrefix
-  $a = @{}
-
-  if ($ModernTemplate)
-  {
-    $a.ModernTemplate = $true    
-  }
-
-
-  $meta = AdoWiki_ConvertAdoWiki_ToDocFx -Path $viewModel.Path -IsChildWiki $viewModel.IsChildWiki -AdoWikiUrl $WikiUrl -TargetUri $viewModel.TargetUri -PagesUidPrefix $viewModel.pagesUidPrefix -DocFxDestination $Target @a -PassThru
-  
-
-  if ($Excludes.Count -gt 0)
-  {
-    $meta.DocFx.Content.exclude = @()
-    
-    foreach($exclude in $Excludes)
-    {
-      $meta.DocFx.Content.exclude += $exclude
-    }
-  }
-  
-  if ($viewModel.isChildWiki)
-  {
-    if ($viewModel.menuDisplayName)
-    {
-      Write-Debug "----------------------------------------------"
-      Write-Host  "Merging with parent"
-      AddResource_ToParent `
-        -ParentTocYml $viewModel.parentToc_yml `
-        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-        -ResourcePath $viewModel.Path `
-        -MenuParentItemName $viewModel.MenuParentItemName `
-        -MenuDisplayName $viewModel.MenuDisplayName `
-        -MenuPosition $viewModel.menuPosition `
-        -HomePage $viewModel.homepage `
-        -MenuUid $viewModel.MenuUid
-    }
-    else
-    {
-      Write-Debug "----------------------------------------------"
-      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
-    }    
-  }
-  
-  Write-Debug "----------------------------------------------"
-  Write-Host "Adding Resource to DocFx.json"
-  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $meta
-
-  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
 
   pop-location
 
-  return $DocFxHelper
+  Write-Debug "----------------------------------------------"
+  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"
+  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $Path
+
 }
 
-function Add-Api
-{
-  param(
-    [Parameter(Mandatory, ValueFromPipeline)][HashTable]$DocFxHelper,
-    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
-    [Parameter(Mandatory)][string]$Id,
-    [Parameter(Mandatory)][Uri]$CloneUrl,
-    [string]$RepoRelativePath,
-    [string]$Target,
-    [string]$MenuParentItemName,
-    [string]$MenuDisplayName,
-    [int]$MenuPosition,
-    [string]$MenuUid,
-    [string[]]$Excludes,
-    [string[]]$Medias,
-    [string]$ParentId
-  )
-
-  Write-Debug "----------------------------------------------"
-  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
-  Write-Debug "Path:     [$Path]"
-  Write-Debug "Id:       [$Id]"
-  Write-Debug "CloneUrl: [$CloneUrl]"
-
-  Push-Location (split-path $DocFxHelper.docFx.Path)
-  
-  Write-Debug "----------------------------------------------"
-  Write-Host "Prepare ViewModel $Path"
-  $a = @{
-    ResourceType       = [ResourceType]::Api
-    Id                 = $Id
-    Path               = $Path.FullName    
-    CloneUrl           = $CloneUrl
-    Target             = $Target
-    RepoRelativePath   = $RepoRelativePath
-    MenuParentItemName = $MenuParentItemName
-    MenuDisplayName    = $MenuDisplayName
-    MenuPosition       = $MenuPosition
-    MenuUid            = $MenuUid
-    Medias             = $Medias
-    ParentId           = $ParentId
-  }
-  $viewModel = ViewModel_getGenericResourceViewModel @a
-  
-  Write-Debug "----------------------------------------------"
-  Write-Debug "Add resource specific details to Resource ViewModel"
-
-  Write-Debug "----------------------------------------------"
-  Write-Debug "Add Resource ViewModel to DocFxHelper"
-  $DocFxHelper = Add-DocFxHelperResource -DocFxHelper $DocFxHelper -Resource $viewModel
-  
-  $meta = [ordered]@{
-    Path = (Resolve-Path $Path.FullName -Relative)
-    DocFx = @{
-      Content = [ordered]@{
-        files = @("**/*.{md,yml}")
-        src = (Resolve-Path $Path.FullName -Relative)
-        dest = $Target
-      }
-    }
-  }
-
-  if (!$Excludes)
-  {
-    $Excludes = @("**/*Private*")
-  }
-
-  $meta.DocFx.Content.exclude = $Excludes
-  foreach($exclude in $Excludes)
-  {
-    if (!$meta.DocFx.Content.exclude.Contains($exclude))
-    {
-      $meta.DocFx.Content.exclude += $exclude
-    }
-  }
-
-  Write-Debug "----------------------------------------------"
-  Write-Host  "Merging with parent"
-  AddResource_ToParent `
-    -ParentTocYml $viewModel.parentToc_yml `
-    -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-    -ResourcePath $viewModel.Path `
-    -MenuParentItemName $viewModel.MenuParentItemName `
-    -MenuDisplayName $viewModel.MenuDisplayName `
-    -MenuPosition $viewModel.menuPosition `
-    -HomePage $viewModel.homepage `
-    -MenuUid $viewModel.MenuUid
-  
-  Write-Debug "----------------------------------------------"
-  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"  
-  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
-
-  Write-Debug "----------------------------------------------"
-  Write-Host "Adding Resource to DocFx.json"
-  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $meta
-  
-  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
-
-  pop-location
-  return $DocFxHelper
-}
 
 function Add-Conceptual
 {
   param(
-    [Parameter(Mandatory, ValueFromPipeline)][HashTable]$DocFxHelper,
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
     [Parameter(Mandatory)][string]$Id,
     [Parameter(Mandatory)][Uri]$CloneUrl,
@@ -3340,12 +3379,7 @@ function Add-Conceptual
 
   Write-Debug "----------------------------------------------"
   Write-Debug "Add Resource ViewModel to DocFxHelper"
-  $DocFxHelper = Add-DocFxHelperResource -DocFxHelper $DocFxHelper -Resource $viewModel
-
-  Write-Debug "----------------------------------------------"
-  Write-Debug "Convert Resource to DocFx"
-  #Set-ConceptualMarkdownFiles -ViewModel $viewModel
-  Set-ConceptualMarkdownFiles -Path $viewModel.Path -CloneUrl $viewModel.CloneUrl -PagesUidPrefix $viewModel.pagesUidPrefix -RepoBranch $viewModel.repoBranch -RepoRelativePath $viewModel.repoRelativePath
+  Add-DocFxHelperResource -Resource $viewModel
 
   Write-Debug "----------------------------------------------"
   Write-Host  "Merging with parent"
@@ -3359,72 +3393,97 @@ function Add-Conceptual
     -HomePage $viewModel.homepage `
     -MenuUid $viewModel.MenuUid
 
-  Write-Debug "----------------------------------------------"
-  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"
-  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
   
   Write-Debug "----------------------------------------------"
   Write-Host "Adding Resource to DocFx.json"
 
-  $meta = [ordered]@{
-    Path = (Resolve-Path $Path.FullName -Relative)
-    DocFx = @{
+  pop-location
+
+  Push-Location (split-path $DocFxhelper.docFx.Path)
+
+  $ConceptualMeta = [ordered]@{
+    Build = [ordered]@{
       Content = [ordered]@{
-        files = @("**/*.{md,yml}")
-        src = (Resolve-Path $Path.FullName -Relative)
-        dest = $Target
-      }
-      FileMetadata = @{
-        _gitContribute = [ordered]@{
-          Pattern = "$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/")
-          Value = [ordered]@{
-            repo = $viewModel.CloneUrl
-            branch = $viewModel.RepoBranch
-          }
-        }
+          files = @("**/*.{md,yml}")
+          src = (Resolve-Path $Path.FullName -Relative)
+          dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
       }
     }
   }
 
   if ($Excludes)
   {
-    $meta.DocFx.Content.exclude = @()
+    $ConceptualMeta.Build.Content.exclude = @()
+
     foreach($exclude in $Excludes)
     {
-      $meta.DocFx.Content.exclude += $exclude
+      $ConceptualMeta.Build.Content.exclude += $exclude
     }
   }
   else
   {
-    $meta.DocFx.Content.exclude = @("**/*Private*")
+    $ConceptualMeta.Build.Content.exclude = @("**/*Private*")
   }
 
-  if ($Medias)
+  if ($ViewModel.Medias)
   {
-    $meta.DocFx.Resource = [ordered]@{
-      src = Resolve-Path $Path.FullName -Relative
-      dest = $Target
+    $ConceptualMeta.Build.Resource = [ordered]@{
+      src = (Resolve-Path $Path.FullName -Relative)
+      dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
       files = @()
     }
-    foreach($res in $Medias)
+    foreach($res in $ViewModel.Medias)
     {
-      $meta.DocFx.Resource.files += $res
+      $ConceptualMeta.Build.Resource.files += $res
     }
   }
 
-  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $meta
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $ConceptualMeta
   
   Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
 
   pop-location
 
-  return $DocFxHelper
+}
+
+function ConvertTo-DocFxPowerShellModule
+{
+  param(
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
+    [Parameter(Mandatory)][string]$PagesUidPrefix
+  )
+
+  Write-Host "[ConvertTo-DocFxPowerShellModule]"
+  Write-Host "   Conceptual path: [$($Path)]"
+  Write-Host "    PagesUidPrefix: [$($PagesUidPrefix)]"
+      
+  Push-Location $Path
+  
+  $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse
+  
+  Write-Host "$($mdFiles.count) PowerShell Module markdown files found"
+  
+  foreach ($mdFile in $mdFiles)
+  {
+    <#
+      $mdFile = $mdFiles | select-object -first 1
+      $mdFile 
+    #>
+    <#
+      $File = $mdfile
+    #>
+
+    $pageUid = Util_Get_PageUid -pagesUidPrefix $PagesUidPrefix -mdfile $mdFile
+    Util_Set_MdYamlHeader -file $mdFile -key "uid" -value $pageUid
+
+  }
+  pop-location
+
 }
 
 function Add-PowerShellModule
 {
   param(
-    [Parameter(Mandatory, ValueFromPipeline)][HashTable]$DocFxHelper,
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
     [Parameter(Mandatory)][string]$Id,
     [Parameter(Mandatory)][Uri]$CloneUrl,
@@ -3471,17 +3530,11 @@ function Add-PowerShellModule
 
   Write-Debug "----------------------------------------------"
   Write-Debug "Add resource specific details to Resource ViewModel"
-  $viewModel.wikiUrl = "$WikiUrl"
-  $viewModel.isChildWiki = ("$($viewModel.target)" -ne "")
   $viewModel.medias += ".attachments"
 
   Write-Debug "----------------------------------------------"
   Write-Debug "Add Resource ViewModel to DocFxHelper"
-  $DocFxHelper = Add-DocFxHelperResource -DocFxHelper $DocFxHelper -Resource $viewModel
-
-  Write-Debug "----------------------------------------------"
-  Write-Host "Convert Resource to DocFx"
-  Set-PowerShellModulesMarkdownFiles -Path $viewModel.Path -CloneUrl $viewModel.CloneUrl -PagesUidPrefix $viewModel.pagesUidPrefix -RepoBranch $viewModel.repoBranch -RepoRelativePath $viewModel.repoRelativePath
+  Add-DocFxHelperResource -Resource $viewModel
   
   Write-Debug "----------------------------------------------"
   Write-Host  "Merging with parent"
@@ -3495,72 +3548,57 @@ function Add-PowerShellModule
     -HomePage $viewModel.homepage `
     -MenuUid $viewModel.MenuUid
 
-  Write-Debug "----------------------------------------------"
-  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"
-  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
   
   Write-Debug "----------------------------------------------"
   Write-Host "Adding Resource to DocFx.json"
 
 
-  $meta = [ordered]@{
-    Path = (Resolve-Path $Path.FullName -Relative)
-    DocFx = @{
+  $PowerShellModuleMeta = [ordered]@{
+    Build = [ordered]@{
       Content = [ordered]@{
-        files = @("**/*.{md,yml}")
-        src = (Resolve-Path $Path.FullName -Relative)
-        dest = $Target
-      }
-      FileMetadata = @{
-        _gitContribute = [ordered]@{
-          Pattern = "$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/")
-          Value = [ordered]@{
-            repo = $viewModel.CloneUrl
-            branch = $viewModel.RepoBranch
-          }
-        }
+          files = @("**/*.{md,yml}")
+          src = (Resolve-Path $Path.FullName -Relative)
+          dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
       }
     }
   }
 
   if ($Excludes)
   {
-    $meta.DocFx.Content.exclude = @()
+    $PowerShellModuleMeta.Build.Content.exclude = @()
     foreach($exclude in $Excludes)
     {
-      $meta.DocFx.Content.exclude += $exclude
+      $PowerShellModuleMeta.Build.Content.exclude += $exclude
     }
   }
   else
   {
-    $meta.DocFx.Content.exclude = @("**/*Private*")
+    $PowerShellModuleMeta.Build.Content.exclude = @("**/*Private*")
   }
 
   if ($Medias)
   {
-    $meta.DocFx.Resource = [ordered]@{
+    $PowerShellModuleMeta.Build.Resource = [ordered]@{
       src = Resolve-Path $Path.FullName -Relative
-      dest = $Target
+      dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
       files = @()
     }
     foreach($res in $Medias)
     {
-      $meta.DocFx.Resource.files += $res
+      $PowerShellModuleMeta.Build.Resource.files += $res
     }
   }
-  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $meta
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $PowerShellModuleMeta
 
   Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
 
   pop-location
 
-  return $DocFxHelper
 }
 
 function Set-Template
 {
-  param(
-    [Parameter(Mandatory)][HashTable]$DocFxHelper,
+  param(    
     [Parameter(Mandatory)]$Template, 
     [Parameter(Mandatory)][System.IO.FileInfo]$Target
   )
@@ -3611,7 +3649,6 @@ function Set-Template
 function Get-DocFxBuildLogViewModel
 {
   param(
-    [Parameter(Mandatory)][HashTable]$DocFxHelper,
     [Parameter(Mandatory, ParameterSetName="ByFile")][System.IO.FileInfo]$DocFxLogFile,
     [Parameter(Mandatory, ParameterSetName="ByString")][string]$Content,
     [Parameter(Mandatory, ParameterSetName="ByObject")][object[]]$DocFxLogs

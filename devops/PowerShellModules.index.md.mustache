@@ -1,0 +1,24 @@
+---
+source:
+  href: {{RootModuleUri}}
+---
+# {{Name}}
+
+{{Description}}
+
+| Property | Value |
+| --- | --- |
+| Name | {{Name}} |
+| Version | {{VersionString}} |
+| Author | {{Author}} |
+| Tags | {{#Tags}}{{.}} {{/Tags}} |
+
+## Release Notes
+{{ReleaseNotes}}{{^ReleaseNotes}}None{{/ReleaseNotes}}
+
+## Functions
+| Function | Description |
+| --- | --- |
+{{#ExportedFunctions}}
+| [{{Name}}]({{Name}}.md) | {{Synopsis}} |
+{{/ExportedFunctions}}
