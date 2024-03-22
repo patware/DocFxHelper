@@ -1,13 +1,28 @@
 #Requires -Modules "Poshstache"
 
 <#
-    import-module Poshstache
-    get-command -module Poshstache
+.SYNOPSIS
+Converts, assembles and builds sources
+
+.DESCRIPTION
+Gathers specs.docs.json from DropsPath, calculates the sources dependency graph, converts and assembles them 
+into formats that docfx understands, and generates the docfx site html.
+
+.PARAMETER DropsPath
+The path to the folder where all the sources are uploaded (typically by pipelines).
+
+.PARAMETER WorkingPath
+The workspace path used by this script and docfx to convert, assemble and publish sources.
+
+.PARAMETER SitePath
+The path to the generated docfx site.
+
 #>
+
 param(
-    $DropsPath       = (Resolve-Path "$PSScriptRoot\..\volumes\drops"), 
-    $DocFxHelperPath = (Resolve-Path "$PSScriptRoot\..\volumes\docfxHelper"), 
-    $SitePath        = (Resolve-Path "$PSScriptRoot\..\volumes\site")
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$DropsPath,
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$WorkspacePath,
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$SitePath      
 )
 
 <#
@@ -21,15 +36,16 @@ param(
 $script:SpecsVersions = @(
     [ordered]@{version=[Version]"0.1.6"; title="Using drops folder"}
     [ordered]@{version=[Version]"0.1.7"; title="Merging resources"}
+    [ordered]@{version=[Version]"0.1.8"; title="New script parameter names"}
 )
 
 $script:SpecsVersion = $SpecsVersions[-1]
 Write-Host "specs.ps1 Version [$($SpecsVersion.Version)] $($SpecsVersion.title)"
 
 $DocFxHelperFolders = @{
-    sources = (Join-Path $DocFxHelperPath -ChildPath "sources")
-    converted = (Join-Path $DocFxHelperPath -ChildPath "converted")
-    staging = (Join-Path $DocFxHelperPath -ChildPath "staging")
+    sources = (Join-Path $WorkspacePath -ChildPath "sources")
+    converted = (Join-Path $WorkspacePath -ChildPath "converted")
+    staging = (Join-Path $WorkspacePath -ChildPath "staging")
 }
 
 foreach($key in $DocFxHelperFolders.Keys)
