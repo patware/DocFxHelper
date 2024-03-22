@@ -1,6 +1,6 @@
 #Requires -modules 'Posh-git', 'Poshstache', 'PlatyPS', 'yayaml'
 
-. $PSScriptRoot\DocFxHelper.ps1
+. $PSScriptRoot/DocFxHelper.ps1
 
 $script:SpecsIncludeVersions = @(
     [ordered]@{version=[Version]"0.1.1"; title="DocSpecAdoWiki"}
@@ -12,6 +12,7 @@ $script:SpecsIncludeVersions = @(
     [ordered]@{version=[Version]"0.1.7"; title="PowerShell Module"}
     [ordered]@{version=[Version]"0.1.7.1"; title="ConvertTo-DocFxAdoWiki removed parameters"}
     [ordered]@{version=[Version]"0.1.7.2"; title="ConvertTo-DocFxAdoWiki Added AllMetadataExportPath"}
+    [ordered]@{version=[Version]"0.1.8"; title="using Copy-Robo instead of robocopy"}
 )
 
 $script:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
@@ -594,8 +595,9 @@ function Convert-DocResource
 
             Write-Information "Ado Wiki Url [$($spec.WikiUrl)]"
 
-            Write-Debug "Robocopy $Path $Destination"
-            & robocopy $Path $Destination /MIR
+            Write-Debug "Copy-Robo $Path $Destination -Mirror"
+            #& robocopy $Path $Destination /MIR
+            Copy-Robo -Source $Path -Destination $Destination -Mirror -ShowFullPath -Verbose
 
             $a = @{}
 
@@ -628,8 +630,8 @@ function Convert-DocResource
                     }
                 )
             }
-            $docfx_json = ".\docfx.json"
-            $docfx_metadata_log_json = ".\docfx.metadata.log.json"
+            $docfx_json = "./docfx.json"
+            $docfx_metadata_log_json = "./docfx.metadata.log.json"
 
             if (Test-Path $docfx_metadata_log_json)
             {
@@ -659,8 +661,9 @@ function Convert-DocResource
 
             Write-Information "REST API - will use swagger.json at docfx build"
             
-            Write-Debug "Robocopy $Path $Destination"
-            & robocopy $Path $Destination /MIR
+            Write-Debug "Copy-Robo $Path $Destination"
+            #& robocopy $Path $Destination /MIR
+            Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -Verbose
 
         }
         PowerShellModule {
@@ -719,7 +722,8 @@ function Add-DocResource
 
     if (Test-Path $Path)
     {
-        & robocopy $Path $destination /MIR
+        #& robocopy $Path $destination /MIR
+        Copy-Robo -Source $Path -Destination $Destination -Mirror
     }
 
     switch($spec.Type)

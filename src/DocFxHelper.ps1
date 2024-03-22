@@ -20,6 +20,7 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.6"; title="Re-worked ConvertTo-DocFxAdoWiki"}
     [ordered]@{version=[Version]"0.3.6.1"; title="Renamed New-DocFx parameters"}
     [ordered]@{version=[Version]"0.3.7"; title="Refactor of ConvertTo-DocFxAdoWiki - .order conversion at end of steps"}
+    [ordered]@{version=[Version]"0.3.8"; title="Copy-Robo"}
 )
 
 $script:DocFxHelperVersion = $DocFxHelperVersions[-1]
@@ -73,6 +74,84 @@ foreach ($requiredModule in $requiredModules)
 
 #region Utilities
 
+function Copy-Robo
+{
+  param(
+    [Parameter(Mandatory)]$source, 
+    [Parameter(Mandatory)]$destination, 
+    [switch]$Mirror, 
+    [switch]$ShowFullpath, 
+    [switch]$Verbose
+  )
+
+  $cmd = $null
+  $a = @()
+  
+
+  if ($PSVersionTable.Platform -eq "linux")
+  {
+    $cmd = "rsync"
+    # --exclude=PATTERN    
+    if ($Mirror){
+      $a += "--archive"
+      $a += "--delete"
+    }
+
+    if ($ShowFullpath) { $a += "-vv" }
+    elseif ($verbose) { $a += "-v" }
+
+    $sourceItem = Get-Item $source
+    if ($sourceItem.PSIsContainer)
+    {
+      if (!$source.EndsWith("/"))
+      {
+        $source = "$($source)/"
+      }
+      if (!$destination.EndsWith("/"))
+      {
+        $destination = "$($destination)/"
+      }
+    }
+    $a += $source
+    $a += $destination
+
+  }
+  else
+  {
+    $cmd = "robocopy"    
+    $a = @()
+    $a += $source
+    $a += $destination
+
+    if ($Mirror) { $a += "/MIR" }
+    if ($ShowFullPath) { $a += "/FP" }
+    if ($Verbose) { $a += "/V" }
+
+    $check = {
+      if ($LastExitCode -gt 7)
+      {
+        Write-Error ($res | out-string)
+        # an error occurred
+        exit $LastExitCode
+      }
+    
+      $LastExitCode = 0
+    }
+  }
+
+  Write-Host "Running $cmd $($a -join " ")"
+  $res = & $cmd @a
+  if ($cmd -eq "robocopy")
+  {
+    if ($LastExitCode -gt 7)
+    {
+      Write-Error ($res | out-string)
+    }
+  }
+  $LastExitCode = 0
+  Write-Host "Finished running $cmd $($a -join " ")"
+
+}
 function script:Get-DocFxHelperResourcePageUidPrefix
 {
   param($Target)
@@ -2377,7 +2456,8 @@ function New-DocFx
         {
           $Destination = Join-Path $Target.Directory -ChildPath "Templates" -AdditionalChildPath $template
           Write-Host "Copying Template [$template] to [$Destination]"
-          & robocopy $templatePath $Destination /MIR
+          #& robocopy $templatePath $Destination /MIR
+          Copy-Robo -Source $templatePath -Destination $Destination -Mirror -ShowFullPath -Verbose
           
         }
       }
