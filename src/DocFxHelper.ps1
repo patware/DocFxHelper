@@ -21,6 +21,9 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.6.1"; title="Renamed New-DocFx parameters"}
     [ordered]@{version=[Version]"0.3.7"; title="Refactor of ConvertTo-DocFxAdoWiki - .order conversion at end of steps"}
     [ordered]@{version=[Version]"0.3.8"; title="Copy-Robo"}
+    [ordered]@{version=[Version]"0.3.8.1"; title="Copy-Robo -ShowVerbose because of parameter with name duplicate"}
+    [ordered]@{version=[Version]"0.3.8.2"; title="Copy-Robo platform is Unix not linux"}
+    [ordered]@{version=[Version]"0.3.9"; title="Get-AdoWikiTocItem fix typo with trailing slash"}
 )
 
 $script:DocFxHelperVersion = $DocFxHelperVersions[-1]
@@ -81,14 +84,15 @@ function Copy-Robo
     [Parameter(Mandatory)]$destination, 
     [switch]$Mirror, 
     [switch]$ShowFullpath, 
-    [switch]$Verbose
+    [switch]$ShowVerbose
   )
 
   $cmd = $null
   $a = @()
   
+  Write-Debug "Platform: [$($PSVersionTable.Platform)]"
 
-  if ($PSVersionTable.Platform -eq "linux")
+  if ("$($PSVersionTable.Platform)" -eq "Unix")
   {
     $cmd = "rsync"
     # --exclude=PATTERN    
@@ -98,16 +102,16 @@ function Copy-Robo
     }
 
     if ($ShowFullpath) { $a += "-vv" }
-    elseif ($verbose) { $a += "-v" }
+    elseif ($ShowVerbose) { $a += "-v" }
 
     $sourceItem = Get-Item $source
     if ($sourceItem.PSIsContainer)
     {
-      if (!$source.EndsWith("/"))
+      if (!"$($source)".EndsWith("/"))
       {
         $source = "$($source)/"
       }
-      if (!$destination.EndsWith("/"))
+      if (!"$destination".EndsWith("/"))
       {
         $destination = "$($destination)/"
       }
@@ -125,18 +129,7 @@ function Copy-Robo
 
     if ($Mirror) { $a += "/MIR" }
     if ($ShowFullPath) { $a += "/FP" }
-    if ($Verbose) { $a += "/V" }
-
-    $check = {
-      if ($LastExitCode -gt 7)
-      {
-        Write-Error ($res | out-string)
-        # an error occurred
-        exit $LastExitCode
-      }
-    
-      $LastExitCode = 0
-    }
+    if ($ShowVerbose) { $a += "/V" }
   }
 
   Write-Host "Running $cmd $($a -join " ")"
@@ -2636,12 +2629,12 @@ function Get-AdoWikiTocItem
 
       if ($isRootWiki -and $dotOrderIsRoot)
       {
-        Write-Verbose ".order is in the root folder of the root wiki, removing toc.yml from href, keeping trailing \"
-        $ret.href = "$($mdFolderRelativeToDotOrder)\"
+        Write-Verbose ".order is in the root folder of the root wiki, removing toc.yml from href, keeping trailing /"
+        $ret.href = "$($mdFolderRelativeToDotOrder)/"
       }
       else
       {
-        $ret.href = "$($mdFolderRelativeToDotOrder)\toc.yml"
+        $ret.href = "$($mdFolderRelativeToDotOrder)/toc.yml"
       }
       Write-Verbose "href: $($ret.href)"
 
@@ -2654,7 +2647,7 @@ function Get-AdoWikiTocItem
       {
         $mdFileHomepageFilename = "$($mdFile.Name)"
       }
-      $ret.homepage = "$($mdFolderRelativeToDotOrder)\$($mdFileHomepageFilename)"
+      $ret.homepage = "$($mdFolderRelativeToDotOrder)/$($mdFileHomepageFilename)"
       Write-Debug "homepage: $($ret.homepage)"
     }
   }
