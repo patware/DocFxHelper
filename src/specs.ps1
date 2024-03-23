@@ -39,6 +39,7 @@ $script:SpecsVersions = @(
     [ordered]@{version=[Version]"0.1.8"; title="New script parameter names"}
     [ordered]@{version=[Version]"0.1.9"; title="Copy-Robo instead of robocopy"}
     [ordered]@{version=[Version]"0.1.10"; title="Checking if specs are valid"}
+    [ordered]@{version=[Version]"0.1.10.1"; title="Copy-Robo renamed para -ShowVerbose"}
 )
 
 $script:SpecsVersion = $SpecsVersions[-1]
@@ -55,35 +56,21 @@ function Write-Progress2
     param($Activity, $Status, $Id, $ParentId, $PercentageComplete, [switch]$Completed)
     $wp = @{
         Activity = $Activity
-        Status = $Status
         Id = $Id
     }
 
-    if ($ParentId)
-    {
-        $wp.ParentId = $ParentId
-    }
-
-    if ($PercentageComplete)
-    {
-        $wp.PercentageComplete = $PercentageComplete
-    }
-    if ($Completed)
-    {
-        $wp.Completed = $Completed
-    }
+    if ($Status) { $wp.Status = $Status}
+    if ($ParentId){$wp.ParentId = $ParentId}
+    if ($PercentageComplete){$wp.PercentageComplete = $PercentageComplete}
+    if ($Completed){$wp.Completed = $Completed}
 
     Write-Progress @wp
 
     $wh = $Activity
     
-    if ($Status)
-    {
-        $wh = "$wh - $Status"
-    }
+    if ($Status){$wh = "$wh - $Status"}
 
     Write-Host $wh
-    
 }
 
 Write-Host "Checking out the Workspace folders"
@@ -133,7 +120,7 @@ else
             $destination = (Join-Path $DocFxHelperFolders.sources -ChildPath $specs.Main.Path.Name)
 
             #& robocopy $source $destination  /MIR /FP /V
-            Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -Verbose
+            Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
         }
         Write-Progress2 -Activity "Copying Main spec" -id 1 -ParentId 0 -Completed
         
@@ -152,7 +139,7 @@ else
             $source = $spec.Path
             $destination = (Join-Path $DocFxHelperFolders.sources -ChildPath $spec.Path.Name)
 
-            Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -Verbose
+            Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
             #& robocopy $source $destination  /MIR /FP /V
 
         }
@@ -167,7 +154,7 @@ else
         $source = join-path $DocFxHelperFolders.sources -ChildPath $specs.Main.Path.Name
         $destination = join-path $DocFxHelperFolders.converted -ChildPath $specs.Main.Path.Name
         #& robocopy $source $destination  /MIR /FP /V
-        Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -Verbose
+        Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
 
         $counter = 0
         foreach($spec in $specs.Ordered)
@@ -327,13 +314,13 @@ else
 
         & docfx build --log "docfx.build.log" --verbose --debugOutput "_debug" 
         $source = (get-item _site).FullName
-        $destination = $SitePath.Path
+        $destination = $SitePath.FullName
 
         Write-Host "Site generated.  Copying to final destination"
         Write-Host "         site: $($source)"
         Write-Host "  destination: $($destination)"
         #& robocopy $source $destination /MIR /FP /V
-        Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -Verbose
+        Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
         Pop-Location
 
         Write-Progress2 -Id 0 -Completed
