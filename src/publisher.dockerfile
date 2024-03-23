@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # build: docker build -f publisher.dockerfile -t publisher:latest .
 # run: docker run --volume d:\rnd\docker\docfxHelper\virtualVolume:/docfxhelper publisher:latest
 FROM mcr.microsoft.com/dotnet/sdk:8.0
