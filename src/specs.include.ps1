@@ -13,6 +13,7 @@ $script:SpecsIncludeVersions = @(
     [ordered]@{version=[Version]"0.1.7.1"; title="ConvertTo-DocFxAdoWiki removed parameters"}
     [ordered]@{version=[Version]"0.1.7.2"; title="ConvertTo-DocFxAdoWiki Added AllMetadataExportPath"}
     [ordered]@{version=[Version]"0.1.8"; title="using Copy-Robo instead of robocopy"}
+    [ordered]@{version=[Version]"0.1.8.1"; title="Copy-Robo renamed param ShowVerbose"}
 )
 
 $script:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
@@ -597,7 +598,7 @@ function Convert-DocResource
 
             Write-Debug "Copy-Robo $Path $Destination -Mirror"
             #& robocopy $Path $Destination /MIR
-            Copy-Robo -Source $Path -Destination $Destination -Mirror -ShowFullPath -Verbose
+            Copy-Robo -Source $Path -Destination $Destination -Mirror -ShowFullPath -ShowVerbose
 
             $a = @{}
 
@@ -663,7 +664,7 @@ function Convert-DocResource
             
             Write-Debug "Copy-Robo $Path $Destination"
             #& robocopy $Path $Destination /MIR
-            Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -Verbose
+            Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose
 
         }
         PowerShellModule {
