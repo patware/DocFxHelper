@@ -1,0 +1,18 @@
+{
+    "metadata": [],
+    "build": {
+      "content": [],
+      "resource": [],
+      "output": "_site",
+      "template": [
+        "default",
+        "modern"
+      ],
+      "globalMetadata": {
+        "_appName": "Sample Docs Name",
+        "_appTitle": "Sample Docs Title",
+        "_enableSearch": true,
+        "pdf": true
+      }
+    }
+  }

@@ -4,14 +4,81 @@ Your "docs" pipeline will most probably have [multiple stages](https://learn.mic
 
 The present version of DocFxHelper.ps1 supports the following scenarios:
 
-| Resource Type | resources.repositories | resources.pipeline |
-| --- | --- | --- |
-| Ado Wiki | Yes | No |
-| Conceptual docs | No | Yes |
-| API Generated Yaml Docs | No | Yes |
-| PowerShell Modules docs | No | Yes |
+| Resource Type           | resources.repositories | resources.pipeline |
+| ---                     | ---                    |  ---               |
+| Ado Wiki                | Yes                    | No                 |
+| Conceptual docs         | No                     | Yes                |
+| API Generated Yaml Docs | No                     | Yes                |
+| PowerShell Modules docs | No                     | Yes                |
 
 The resources.repositories and resources.pipeline above refer to the yaml resources types available in [Azure DevOps Pipelines](https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources?view=azure-pipelines).
+
+## Setup
+
+### Docker Compose
+
+Docker images are indempotent, so you'll want volumes the following volumes:
+
+- drops : where you upload your pipeline artifacts to
+- site: docfx generated html site
+- workspace [optional]: workspace for docfxhelper.  Can be useful for troubleshooting, viewing logs.
+
+The creation of volumes is outside the scope of this README, but here are examples of volumes, including the optional workspace volume:
+
+### [Windows](#tab/windows)
+
+On a Windows workstation (host), created two folders:
+
+- C:\docfxhelper\drops
+- C:\docfxhelper\site
+
+And created 2 docker volumes that target those folders:
+
+```shell
+docker volume create --driver local --opt type=none --opt o=bind --opt device=D:\\docfxhelper\\drops --name docfxhelper_drops
+docker volume create --driver local --opt type=none --opt o=bind --opt device=D:\\docfxhelper\\workspace --name docfxhelper_workspace
+docker volume create --driver local --opt type=none --opt o=bind --opt device=D:\\docfxhelper\\site --name docfxhelper_site
+```
+
+And the docker compose would look like:
+
+```yaml
+version: "3.8"
+name: docs
+services:
+  site:
+    build:
+      context: .
+      dockerfile: site.dockerfile
+    image: site:latest
+    ports:
+      - "8081:80"
+    environment:
+      NGINX_PORT: 80
+    volumes:
+      - "docfxhelper_site:/usr/share/nginx/html/"
+  publisher:
+    build:
+      context: .
+      dockerfile: publisher.dockerfile
+    image: publisher:latest
+    volumes:
+      - "docfxhelper_drops:/docfxhelper/drops"
+      - "docfxhelper_workspace:/docfxhelper/workspace"
+      - "docfxhelper_site:/docfxhelper/site"
+volumes:
+  docfxhelper_drops:
+  docfxhelper_workspace: 
+  docfxhelper_site:  
+
+```
+
+### [Azure](#tab/azure)
+
+Content for Azure...
+
+---
+
 
 ## Example scenario
 
