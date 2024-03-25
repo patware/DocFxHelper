@@ -11,33 +11,17 @@ services:
     environment:
       NGINX_PORT: 80
     volumes:
-      - "site:/usr/share/nginx/html/"
+      - "docfxhelper_site:/usr/share/nginx/html/"
   publisher:
     build:
       context: .
       dockerfile: publisher.dockerfile
     image: publisher:latest
     volumes:
-      - "drops:/docfxhelper/drops"
-      - "workspace:/docfxhelper/workspace"
-      - "site:/docfxhelper/site"
+      - "docfxhelper_drops:/docfxhelper/drops"
+      - "docfxhelper_workspace:/docfxhelper/workspace"
+      - "docfxhelper_site:/docfxhelper/site"
 volumes:
-  drops: 
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: d:\rnd\docker\docfxHelper\virtualVolume\drops
-  workspace: 
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: d:\rnd\docker\docfxHelper\virtualVolume\workspace
-  site:  
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: d:\rnd\docker\docfxHelper\virtualVolume\site\
-
+  docfxhelper_drops:
+  docfxhelper_workspace: 
+  docfxhelper_site:  
