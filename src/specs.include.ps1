@@ -14,6 +14,7 @@ $script:SpecsIncludeVersions = @(
     [ordered]@{version=[Version]"0.1.7.2"; title="ConvertTo-DocFxAdoWiki Added AllMetadataExportPath"}
     [ordered]@{version=[Version]"0.1.8"; title="using Copy-Robo instead of robocopy"}
     [ordered]@{version=[Version]"0.1.8.1"; title="Copy-Robo renamed param ShowVerbose"}
+    [ordered]@{version=[Version]"0.1.9"; title="Conceptual"}
 )
 
 $script:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
@@ -697,7 +698,11 @@ function Convert-DocResource
 
         }
         Conceptual {
-
+            Write-Information "Conceptual - just copy to converted"
+            
+            Write-Debug "Copy-Robo $Path $Destination"
+            #& robocopy $Path $Destination /MIR
+            Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose
         }
         Template {
 
@@ -788,7 +793,22 @@ function Add-DocResource
                 -Medias $spec.Medias `
                 -ParentId $spec.ParentId
         }
-        Conceptual {}
+        Conceptual {
+            Add-Conceptual `
+                -Path $destination `
+                -Id $spec.Id `
+                -CloneUrl $spec.CloneUrl `
+                -RepoRelativePath $spec.SourceRelativePath `
+                -Target $spec.Target `
+                -MenuParentItemName $spec.MenuParentItemName `
+                -MenuDisplayName $spec.MenuDisplayName `
+                -MenuPosition $spec.MenuPosition `
+                -Homepage $spec.Homepage `
+                -MenuUid $spec.MenuUid `
+                -Excludes $spec.Excludes `
+                -Medias $spec.Medias `
+                -ParentId $spec.ParentId
+        }
         Template      {}   
     }
 }

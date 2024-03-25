@@ -45,7 +45,7 @@ $script:SpecsVersions = @(
 $script:SpecsVersion = $SpecsVersions[-1]
 Write-Host "specs.ps1 Version [$($SpecsVersion.Version)] $($SpecsVersion.title)"
 
-$DocFxHelperFolders = @{
+$DocFxHelperFolders = [ordered]@{
     sources = (Join-Path $WorkspacePath -ChildPath "sources")
     converted = (Join-Path $WorkspacePath -ChildPath "converted")
     staging = (Join-Path $WorkspacePath -ChildPath "staging")
@@ -73,13 +73,22 @@ function Write-Progress2
     Write-Host $wh
 }
 
-Write-Host "Checking out the Workspace folders"
+Write-Host "Checking out the [$($DocFxHelperFolders.Keys.Count)] Workspace folders"
 foreach($key in $DocFxHelperFolders.Keys)
 {
-    Write-Host " - $($key)"
-    if (!(Test-Path $DocFxHelperFolders."$key"))
+    <#
+        $key = $DocFxHelperFolders.Keys | select-object -first 1
+        $key
+    #>
+    Write-Host " - $($key): [$($DocFxHelperFolders."$key")]"
+    if (Test-Path $DocFxHelperFolders."$key")
     {
-        new-Item $DocFxHelperFolders."$key" -ItemType Directory
+        Write-Host "    $Key folder found"
+    }
+    else
+    {
+        Write-Host "    $Key folder not found: Creating [$($DocFxHelperFolders."$key")]"
+        new-Item -Path $DocFxHelperFolders."$key" -ItemType Directory
     }
 }
 
@@ -87,6 +96,10 @@ $DocFxHelperFiles = @{
     docfx_json = (join-Path $DocFxHelperFolders.staging -ChildPath "docfx.json")
     docfxhelper_json = (join-Path $DocFxHelperFolders.staging -ChildPath "docfxhelper.json")
 }
+
+Write-Host "DocFx files will be generated at:"
+Write-Host "  - docfx.json: [$($DocFxHelperFiles.docfx_json)]"
+Write-Host "  - docfxhelper_json: [$($DocFxHelperFiles.docfxhelper_json)] (docfx helper viewModel used in templates)"
 
 # ------------------------------------------------------------------------
 
@@ -96,6 +109,7 @@ $specs_docs_json_list = Get-ChildItem -Path $DropsPath -Filter "specs.docs.json"
 if ($specs_docs_json_list.Count -eq 0)
 {
     Write-Warning "No specs.docs.json file found in $DropsPath"
+    Write-Host 
 }
 else
 {
@@ -270,18 +284,9 @@ else
         Write-Progress2 -Activity "DryRun Building DocFx.json" -Id 0
 
         push-location $DocFxHelperFolders.staging
-        if (test-path "docfx.build.log")
-        {
-            remove-item "docfx.build.log"
-        }
-        if (test-path "dryRun_site")
-        {
-            remove-item "dryRun_site" -Recurse -Force
-        }
-        if (test-path "dryRun_debug")
-        {
-            remove-item "dryRun_debug" -Recurse -Force
-        }
+        if (test-path "docfx.build.log") {remove-item "docfx.build.log"}
+        if (test-path "dryRun_site") {remove-item "dryRun_site" -Recurse -Force}
+        if (test-path "dryRun_debug") {remove-item "dryRun_debug" -Recurse -Force}
         & docfx build --log "docfx.build.log" --verbose --output "dryRun_site" --debugOutput "dryRun_debug" --dryRun
         Pop-Location
 
@@ -299,18 +304,9 @@ else
         Write-Progress2 -Activity "Building DocFx.json" -Id 0
 
         push-location $DocFxHelperFolders.staging
-        if (test-path "docfx.build.log")
-        {
-            remove-item "docfx.build.log"
-        }
-        if (test-path "dryRun_site")
-        {
-            remove-item "dryRun_site" -Recurse -Force
-        }
-        if (test-path "dryRun_debug")
-        {
-            remove-item "dryRun_debug" -Recurse -Force
-        }
+        if (test-path "docfx.build.log") {remove-item "docfx.build.log"}
+        if (test-path "dryRun_site") {remove-item "dryRun_site" -Recurse -Force}
+        if (test-path "dryRun_debug") {remove-item "dryRun_debug" -Recurse -Force}
 
         & docfx build --log "docfx.build.log" --verbose --debugOutput "_debug" 
         $source = (get-item _site).FullName
