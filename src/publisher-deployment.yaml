@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: C:\Users\patwa\AppData\Local\Microsoft\WinGet\Links\kompose.exe --file .\docker.compose.yml convert
+    kompose.version: 1.31.2 (a92241f79)
+  creationTimestamp: null
+  labels:
+    io.kompose.service: publisher
+  name: publisher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: publisher
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: C:\Users\patwa\AppData\Local\Microsoft\WinGet\Links\kompose.exe --file .\docker.compose.yml convert
+        kompose.version: 1.31.2 (a92241f79)
+      creationTimestamp: null
+      labels:
+        io.kompose.network/docs-default: "true"
+        io.kompose.service: publisher
+    spec:
+      containers:
+        - image: publisher:latest
+          name: publisher
+          resources: {}
+          volumeMounts:
+            - mountPath: /docfxhelper/drops
+              name: docfxhelper-drops
+            - mountPath: /docfxhelper/workspace
+              name: docfxhelper-workspace
+            - mountPath: /docfxhelper/site
+              name: docfxhelper-site
+      restartPolicy: Always
+      volumes:
+        - name: docfxhelper-drops
+          persistentVolumeClaim:
+            claimName: docfxhelper-drops
+        - name: docfxhelper-workspace
+          persistentVolumeClaim:
+            claimName: docfxhelper-workspace
+        - name: docfxhelper-site
+          persistentVolumeClaim:
+            claimName: docfxhelper-site
+status: {}
