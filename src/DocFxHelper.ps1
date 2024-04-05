@@ -24,6 +24,7 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.8.1"; title="Copy-Robo -ShowVerbose because of parameter with name duplicate"}
     [ordered]@{version=[Version]"0.3.8.2"; title="Copy-Robo platform is Unix not linux"}
     [ordered]@{version=[Version]"0.3.9"; title="Get-AdoWikiTocItem fix typo with trailing slash"}
+    [ordered]@{version=[Version]"0.3.10"; title="ConvertTo-DocFx* - yamlheader with _docfxHelper.remote instead of adoWikiAbsolutePath and _gitContribute"}
 )
 
 $script:DocFxHelperVersion = $DocFxHelperVersions[-1]
@@ -1062,19 +1063,23 @@ function script:DocFx_AddViewModel
     $docfx.build.resource += $meta.build.Resource
   }
 
-  if ($meta.build.FileMetadata._gitContribute)
+  if ($meta.build.FileMetadata)
   {
     if ($null -eq $docfx.build.fileMetadata)
     {
       $docfx.build.fileMetadata = [ordered]@{}
     }
 
-    if ($null -eq $docfx.build.fileMetadata._gitContribute)
+    foreach($key in $meta.build.FileMetadata.Keys)
     {
-      $docfx.build.fileMetadata._gitContribute = [ordered]@{}
+      $v = $meta.build.FileMetadata."$key"
+      Write-Host "build.FileMetadata.$Key"
+      if ($null -eq $docfx.build.fileMetadata."$Key")
+      {
+        $docfx.build.fileMetadata."$Key" = [ordered]@{}
+      }
+      $docfx.build.fileMetadata."$Key"."$($v.Pattern)" = $v.Value
     }
-    
-    $docfx.build.fileMetadata._gitContribute."$($meta.build.FileMetadata._gitContribute.Pattern)" = $meta.build.FileMetadata._gitContribute.Value
   }
   
   <#
@@ -2398,17 +2403,6 @@ function Resolve-TocItem
 #endregion
 
 #region Conceptual
-function Set-ConceptualYamlHeader
-{
-  param([Parameter(Mandatory)][System.IO.FileInfo]$File, [Parameter(Mandatory)][Uri]$docurl)
-
-  Write-Debug "[Set-ConceptualYamlHeader]"
-  Write-Debug " Conceptual file: [$($File)]"
-  Write-Debug "          docurl: [$($docurl)]"
-
-  Util_Set_MdYamlHeader -file $File -key "docurl" -value $docurl.AbsoluteUri
-
-}
 
 #endregion
 
@@ -2437,21 +2431,26 @@ function New-DocFx
 
       $docfxInSource = Get-content $BaseDocFxPath | ConvertFrom-Json -AsHashtable
 
+      Write-Host "Copying [$($docfxInSource.build.template.Count)] DocFx Templates (if applicable)"
+
       foreach($template in $docfxInSource.build.template)
       {
         <#
           $template = $docfxInSource.build.template | select-object -first 1
           $template = $docfxInSource.build.template | select-object -first 1 -skip 1
         #>
-        $templatePath = Join-Path $BaseDocFxPath.Directory -ChildPath "Templates" -AdditionalChildPath $template
+        $templatePath = Join-Path $BaseDocFxPath.Directory -ChildPath $template
 
         if (Test-Path $templatePath)
         {
-          $Destination = Join-Path $Target.Directory -ChildPath "Templates" -AdditionalChildPath $template
-          Write-Host "Copying Template [$template] to [$Destination]"
+          $Destination = Join-Path $Target.FullName -ChildPath $template
+          Write-Host "DocFx Template [$template] found, copying to [$Destination]"
           #& robocopy $templatePath $Destination /MIR
           Copy-Robo -Source $templatePath -Destination $Destination -Mirror -ShowFullPath -Verbose
-          
+        }
+        else
+        {
+          Write-Host "DocFx Template [$template] not found in [$templatePath].  Template not copied"
         }
       }
     }
@@ -2670,7 +2669,7 @@ function ConvertTo-DocFxAdoWiki
     .DESCRIPTION
       Steps performed
         1. Set Yaml Headers
-          a. adoWikiAbsolutePath
+          a. _docfxHelper.remote (was adoWikiAbsolutePath)
           b. DocFxHelperOrginalFileAbsolute
         2. Prepare Hyperlinks
           a. Update wiki links removing escapes \(->( and \)->)
@@ -2691,15 +2690,25 @@ function ConvertTo-DocFxAdoWiki
   #>
 
   param(
-    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path
-    , [string]$PagesUidPrefix
-    , [switch]$UseModernTemplate
-    , [switch]$IsRootWiki
-    , $AllMetadataExportPath
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
+    [Parameter(Mandatory)][Uri]$WikiUri,
+    [string]$RepoBranch = "main",
+    [string]$RepoRelativePath = "/",
+    [string]$PagesUidPrefix,
+    [switch]$UseModernTemplate,
+    [switch]$IsRootWiki,
+    $AllMetadataExportPath
   )
  
   Write-Host "Updating AdoWiki [$Path] to make it DocFx friendly"
+
+  Write-Debug "WikiUri: $($WikiUri)"
+  Write-Debug "Repo Branch: $($RepoBranch)"
   Write-Debug "Is Child Wiki: $($IsRootWiki)"
+  Write-Debug "Pages UID Prefix: $($PagesUidPrefix)"
+  Write-Debug "Use Modern Template: $($UseModernTemplate)"
+  Write-Debug "Is Root Wiki: $($IsRootWiki)"
+  Write-Debug "AllMetadata export path: $($AllMetadataExportPath)"
     
   push-location $Path
 
@@ -2717,7 +2726,7 @@ function ConvertTo-DocFxAdoWiki
 
   # ------------------------------------------------------------------------
   Write-Host "   - [1/9] Set Yaml Headers"
-  Write-Verbose "     - adoWikiAbsolutePath"
+  Write-Verbose "     - _docfxHelper.remote"
   Write-Verbose "     - DocFxHelperOrginalFileAbsolute"
   foreach ($metadata in $allMetadata)
   {
@@ -2729,8 +2738,13 @@ function ConvertTo-DocFxAdoWiki
 
     Write-Debug "- $($metadata.File.Fullname)"
 
-    # adoWikiAbsolutePath: Will be used by DocFxHelper DocFx template to generate the "Edit this document" url
-    Util_Set_MdYamlHeader -file $metadata.File -key "adoWikiAbsolutePath" -value $metadata.AdoWiki.WikiAbsolutePath
+    $mdFileRemote = Get-DocFxRemote -fileRelativePath (Resolve-path $metadata.File -Relative) -CloneUrl "$WikiUri" -Branch $RepoBranch -RepoRelativePath $RepoRelativePath
+
+    Write-Debug "Overwriting _docfxHelper.remote.path to the AdoWiki absolute path instead"
+    $mdFileRemote.remote.path = $metadata.AdoWiki.WikiAbsolutePath
+
+    # _docfxHelper.remote: Will be used by DocFxHelper DocFx template to generate the "Edit this document" url
+    Util_Set_MdYamlHeader -file $metadata.File -key "_docfxHelper" -value $mdFileRemote
 
     # the only way to map a renamed/move mdFile to its original metadata
     Util_Set_MdYamlHeader -file $metadata.File -key "DocFxHelperOrginalFileAbsolute" -value $metadata.AdoWiki.FileAbsolute
@@ -2928,17 +2942,8 @@ function ConvertTo-DocFxAdoWiki
     Util_Set_MdYamlHeader -file $metadata.File -key "uid" -value $pageUID    
   }
 
-  if ($AllMetadataExportPath)
-  {
-    New-Item $AllMetadataExportPath -ItemType File -Force
-    $allMetadata | ConvertTo-Json -Depth 6 | set-content $AllMetadataExportPath
-  }
-
   # ------------------------------------------------------------------------
-  Write-Host "   - [9/9] Convert every .order to toc.yml"
-
-  
-  Write-Debug "     - b. Convert .orders to toc.yml"
+  Write-Host "   - [9/9] Convert every .order to toc.yml"  
   foreach ($folder in $folders)
   {
     <#
@@ -3029,22 +3034,13 @@ function ConvertTo-DocFxAdoWiki
     $toc | ConvertTo-Yaml -Depth 10 | Set-Content $toc_yml
   }
 
-  # # ------------------------------------------------------------------------
-  # Write-Host "   - [10/11] Set toc.yml Items files that should point to their folder instead of their .md"
-  # DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $Path
-  
-  # Write-Host  "   - [11/11] Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml"
-  # Write-Debug "----------------------------------------------"
-  # if ($IsRootWiki)
-  # {
-  #   DocFx_FixRootTocItemsToReferenceTOCs -Path $Path
-  # }
-  # else
-  # {
-  #   Write-Host  "   - [11/11] Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml - This is a Child Wiki, Skipping..."
-  # }
 
-
+  if ($AllMetadataExportPath)
+  {
+    [void](New-Item $AllMetadataExportPath -ItemType File -Force)
+    $allMetadata | ConvertTo-Json -Depth 6 | set-content $AllMetadataExportPath
+    Write-Host "DocFx Ado Wiki Metadata exported to [$AllMetadataExportPath]"
+  }
 
   pop-location
 
@@ -3107,28 +3103,33 @@ function Add-AdoWiki {
   Write-Debug "Add Resource ViewModel to DocFxHelper"
   Add-DocFxHelperResource -Resource $viewModel
 
-
-  if (-not $viewModel.isRootWiki) {
-      Write-Host "This is a Child Wiki"
-      
-      if ($viewModel.menuDisplayName) {
-          Write-Debug "----------------------------------------------"
-          Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
-          AddResource_ToParent `
-              -ParentTocYml $viewModel.parentToc_yml `
-              -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-              -ResourcePath $viewModel.Path `
-              -MenuParentItemName $viewModel.MenuParentItemName `
-              -MenuDisplayName $viewModel.MenuDisplayName `
-              -MenuPosition $viewModel.menuPosition `
-              -HomePage $viewModel.homepage `
-              -MenuUid $viewModel.MenuUid
-      }
-      else {
-          Write-Debug "----------------------------------------------"
-          Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
-      }    
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
   }
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+  
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
+  }
+
 
   $adoWikiMeta = [ordered]@{
     Build = [ordered]@{
@@ -3142,12 +3143,10 @@ function Add-AdoWiki {
       }
 
       FileMetadata = @{
-          _gitContribute = [ordered]@{
-              Pattern = "$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/")
-              Value   = [ordered]@{
-                  AdoWikiUri = $viewModel.wikiUrl
-              }        
-          }
+        _adoWikiUri = [ordered]@{
+          Pattern = ("$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/") -split "/" | where-object {$_ -and $_ -ne "."}) -join "/"
+          Value   = $viewModel.wikiUrl
+        }
       }
     }
   }
@@ -3156,11 +3155,6 @@ function Add-AdoWiki {
   {
       $adoWikiMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
       $adoWikiMeta.Build.Resource.dest = "$(($viewModel.Target -split "/" | where-object {$_}) -join "/")/.attachments"
-  }
-
-  if ($viewModel.SubFolder)
-  {
-      $adoWikiMeta.Build.FileMetadata._gitContribute.Value.RelativePath = $viewModel.SubFolder
   }
 
   Write-Debug "----------------------------------------------"
@@ -3215,22 +3209,31 @@ function Add-DotnetApi
   Write-Debug "Add Resource ViewModel to DocFxHelper"
   Add-DocFxHelperResource -Resource $viewModel
   
-  if ($viewModel.menuDisplayName) {
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
     Write-Debug "----------------------------------------------"
-    Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
-    AddResource_ToParent `
-      -ParentTocYml $viewModel.parentToc_yml `
-      -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-      -ResourcePath $viewModel.Path `
-      -MenuParentItemName $viewModel.MenuParentItemName `
-      -MenuDisplayName $viewModel.MenuDisplayName `
-      -MenuPosition $viewModel.menuPosition `
-      -HomePage $viewModel.homepage `
-      -MenuUid $viewModel.MenuUid
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
   }
-  else {
-    Write-Debug "----------------------------------------------"
-    Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+  
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
   }
 
   Write-Debug "----------------------------------------------"
@@ -3305,22 +3308,31 @@ function Add-RestApi
   Write-Debug "Add Resource ViewModel to DocFxHelper"
   Add-DocFxHelperResource -Resource $viewModel
   
-  if ($viewModel.menuDisplayName) {
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
     Write-Debug "----------------------------------------------"
-    Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
-    AddResource_ToParent `
-      -ParentTocYml $viewModel.parentToc_yml `
-      -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-      -ResourcePath $viewModel.Path `
-      -MenuParentItemName $viewModel.MenuParentItemName `
-      -MenuDisplayName $viewModel.MenuDisplayName `
-      -MenuPosition $viewModel.menuPosition `
-      -HomePage $viewModel.homepage `
-      -MenuUid $viewModel.MenuUid
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
   }
-  else {
-    Write-Debug "----------------------------------------------"
-    Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+  
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
   }
 
   Write-Debug "----------------------------------------------"
@@ -3356,7 +3368,7 @@ function ConvertTo-DocFxConceptual
   param(
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
     [Parameter(Mandatory)][Uri]$CloneUrl, 
-    [Parameter(Mandatory)][string]$PagesUidPrefix,
+    [string]$PagesUidPrefix,
     [string]$RepoBranch = "main",
     [string]$RepoRelativePath = "/"
   )
@@ -3372,6 +3384,8 @@ function ConvertTo-DocFxConceptual
   $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse
   
   Write-Host "$($mdFiles.count) conceptual markdown files found"
+
+  $relativePathSegments = "$RepoRelativePath".Replace("\", "/") -split "/"
   
   foreach ($mdFile in $mdFiles)
   {
@@ -3386,10 +3400,12 @@ function ConvertTo-DocFxConceptual
     $pageUid = Util_Get_PageUid -pagesUidPrefix $pagesUidPrefix -mdfile $mdFile    
     Util_Set_MdYamlHeader -file $mdFile -key "uid" -value $pageUid
 
-    $repoPath = (Join-Path $RepoRelativePath -ChildPath (Resolve-Path $mdFile -Relative).Substring(2)).Replace("\", "/")
-    $docUrl = [Uri]::new($CloneUrl, "?path=$($repoPath)&version=GB$($RepoBranch)&_a=contents")
+    $mdFileRemote = Get-DocFxRemote -fileRelativePath (Resolve-path $mdFile -Relative) -CloneUrl "$CloneUrl" -Branch $Branch -RepoRelativePath $RepoRelativePath
 
-    Set-ConceptualYamlHeader -File $mdFile -DocUrl $docUrl.AbsoluteUri
+    # _docfxHelper.remote: Will be used by DocFxHelper DocFx template to generate the "Edit this document" url
+    Util_Set_MdYamlHeader -file $mdFile -key "_docfxHelper" -value $mdFileRemote
+
+
   }
 
   pop-location
@@ -3454,25 +3470,36 @@ function Add-Conceptual
   Write-Debug "Add Resource ViewModel to DocFxHelper"
   Add-DocFxHelperResource -Resource $viewModel
 
-  Write-Debug "----------------------------------------------"
-  Write-Host  "Merging with parent"
-  AddResource_ToParent `
-    -ParentTocYml $viewModel.parentToc_yml `
-    -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-    -ResourcePath $viewModel.Path `
-    -MenuParentItemName $viewModel.MenuParentItemName `
-    -MenuDisplayName $viewModel.MenuDisplayName `
-    -MenuPosition $viewModel.menuPosition `
-    -HomePage $viewModel.homepage `
-    -MenuUid $viewModel.MenuUid
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
+  }
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+  
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
+  }
 
   
   Write-Debug "----------------------------------------------"
   Write-Host "Adding Resource to DocFx.json"
-
-  pop-location
-
-  Push-Location (split-path $DocFxhelper.docFx.Path)
 
   $ConceptualMeta = [ordered]@{
     Build = [ordered]@{
@@ -3519,21 +3546,58 @@ function Add-Conceptual
 
 }
 
+function Set_DocFxRemote
+{
+  param([Parameter(Mandatory)][System.IO.FileInfo]$mdFile, $Remote)
+
+  Util_Set_MdYamlHeader -file $mdFile -key "source" -value $Remote.source
+  Util_Set_MdYamlHeader -file $mdFile -key "documentation" -value $Remote.documentation
+
+}
+
+function Get-DocFxRemote
+{
+  param(
+    [Parameter(Mandatory)][string]$fileRelativePath,
+    [Parameter(Mandatory)][Uri]$CloneUrl,
+    [string]$Branch = "main",
+    [string]$RepoRelativePath = "/"
+  )
+
+    $repoRelativePathSegments = "$repoRelativePath".Replace("\", "/") -split "/"
+    $fileRelativePathSegments = "$fileRelativePath".Replace("\", "/") -split "/"
+
+    return [ordered]@{
+      remote = [ordered]@{
+        repo = "$CloneUrl"
+        branch = "$RepoBranch"
+        path = "/$(($repoRelativePathSegments + $fileRelativePathSegments | where-object {$_ -and $_ -ne "."}) -join "/")"
+      }
+    }
+}
+
 function ConvertTo-DocFxPowerShellModule
 {
   param(
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
-    [Parameter(Mandatory)][string]$PagesUidPrefix
+    [Parameter(Mandatory)][string]$PagesUidPrefix, 
+    [Parameter(Mandatory)][Uri]$CloneUrl,
+    [string]$RepoBranch = "main",
+    [string]$RepoRelativePath = "/"
   )
 
   Write-Host "[ConvertTo-DocFxPowerShellModule]"
   Write-Host "   Conceptual path: [$($Path)]"
   Write-Host "    PagesUidPrefix: [$($PagesUidPrefix)]"
+  Write-Host "          CloneUrl: [$($CloneUrl)]"
+  Write-Host "        RepoBranch: [$($RepoBranch)]"
+  Write-Host "  RepoRelativePath: [$($RepoRelativePath)]"
+
       
   Push-Location $Path
   
   $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse
-  
+
   Write-Host "$($mdFiles.count) PowerShell Module markdown files found"
   
   foreach ($mdFile in $mdFiles)
@@ -3548,6 +3612,18 @@ function ConvertTo-DocFxPowerShellModule
 
     $pageUid = Util_Get_PageUid -pagesUidPrefix $PagesUidPrefix -mdfile $mdFile
     Util_Set_MdYamlHeader -file $mdFile -key "uid" -value $pageUid
+
+    $mdFileRemote = Get-DocFxRemote -fileRelativePath (Resolve-Path $mdFile -Relative) -CloneUrl "$CloneUrl" -Branch $RepoBranch -RepoRelativePath $RepoRelativePath
+
+    Write-Debug "Overwriting _docfxHelper.remote.path to the ps1/psd1/psm1 file instead"
+    $meta = Util_Get_MdYamlHeader -file $mdFile
+    $mdFileRemote.remote.path = $meta.metadata.path
+
+    $mdFileRemote.startLine = if ($meta.metadata.startLine) { $meta.metadata.startLine} else {0}
+    $mdFileRemote.endLine = if ($meta.metadata.endLine) { $meta.metadata.endLine} else {0}
+
+    # _docfxHelper.remote: Will be used by DocFxHelper DocFx template to generate the "Edit this document" url
+    Util_Set_MdYamlHeader -file $mdFile -key "_docfxHelper" -value $mdFileRemote
 
   }
   pop-location
@@ -3609,19 +3685,33 @@ function Add-PowerShellModule
   Write-Debug "Add Resource ViewModel to DocFxHelper"
   Add-DocFxHelperResource -Resource $viewModel
   
-  Write-Debug "----------------------------------------------"
-  Write-Host  "Merging with parent"
-  AddResource_ToParent `
-    -ParentTocYml $viewModel.parentToc_yml `
-    -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
-    -ResourcePath $viewModel.Path `
-    -MenuParentItemName $viewModel.MenuParentItemName `
-    -MenuDisplayName $viewModel.MenuDisplayName `
-    -MenuPosition $viewModel.menuPosition `
-    -HomePage $viewModel.homepage `
-    -MenuUid $viewModel.MenuUid
-
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
+  }
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
   
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
+  }
+ 
   Write-Debug "----------------------------------------------"
   Write-Host "Adding Resource to DocFx.json"
 

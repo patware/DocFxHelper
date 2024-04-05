@@ -1,0 +1,8 @@
+{
+    "Type": "Conceptual",
+    "Id": "SampleSite",
+    "Name": "Sample",
+    "CloneUrl" : "https://github.com/patware/DocFxHelper.git",
+    "RepoRelativePath" : "/src/SampleSite",
+    "Branch" : "feature/specs"
+}

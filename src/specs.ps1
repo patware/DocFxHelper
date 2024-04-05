@@ -29,8 +29,9 @@ param(
     $ErrorActionPreference = 'Inquire'
     $InformationPreference = 'Continue'
     $DebugPreference = 'Continue'
-
+    $VerbosePreference = 'Continue'
 #>
+
 . $PSScriptRoot/specs.include.ps1
 
 $script:SpecsVersions = @(
@@ -95,11 +96,13 @@ foreach($key in $DocFxHelperFolders.Keys)
 $DocFxHelperFiles = @{
     docfx_json = (join-Path $DocFxHelperFolders.staging -ChildPath "docfx.json")
     docfxhelper_json = (join-Path $DocFxHelperFolders.staging -ChildPath "docfxhelper.json")
+    docfx_build_vm_json = (Join-Path $DocFxHelperFolders.staging -ChildPath "docfx.build.json")
 }
 
-Write-Host "DocFx files will be generated at:"
+Write-Host "DocFx files:"
 Write-Host "  - docfx.json: [$($DocFxHelperFiles.docfx_json)]"
 Write-Host "  - docfxhelper_json: [$($DocFxHelperFiles.docfxhelper_json)] (docfx helper viewModel used in templates)"
+Write-Host "  - docfx_build_vm_json: [$($DocFxHelperFiles.docfx_build_vm_json)] (docfx build viewModel used in templates)"
 
 # ------------------------------------------------------------------------
 
@@ -117,7 +120,7 @@ else
     Write-Progress2 -Activity "Fetching Doc Specs from the Drops folders" -Status "Building [DocSpecs] object from found specs.docs.json" -Id 0    
     $specs = $specs_docs_json_list | ConvertFrom-Specs
 
-    if ($null -eq $specs.Main -and $specs.All.Count -eq 0)
+    if ($null -eq $specs.Main -or $specs.All.Count -eq 0)
     {
         Write-Warning "No specs found, nothing to do"
     }
@@ -281,27 +284,37 @@ else
 
 
         # ------------------------------------------------------------------------
-        Write-Progress2 -Activity "DryRun Building DocFx.json" -Id 0
+        Write-Progress2 -Activity "DryRun Building DocFx" -Id 0
 
         push-location $DocFxHelperFolders.staging
         if (test-path "docfx.build.log") {remove-item "docfx.build.log"}
         if (test-path "dryRun_site") {remove-item "dryRun_site" -Recurse -Force}
         if (test-path "dryRun_debug") {remove-item "dryRun_debug" -Recurse -Force}
-        & docfx build --log "docfx.build.log" --verbose --output "dryRun_site" --debugOutput "dryRun_debug" --dryRun
+        if (test-path "_rawModel") {remove-item "_rawModel" -Recurse -Force}
+        if (test-path "_viewModel") {remove-item "_viewModel" -Recurse -Force}
+        & docfx build --log "docfx.build.log" --verbose --output "dryRun_site" --debugOutput "dryRun_debug" --dryRun  --exportRawModel --rawModelOutputFolder _rawModel --exportViewModel --viewModelOutputFolder _viewModel --maxParallelism 1
         Pop-Location
 
         $docfx_build_log = Join-Path $DocFxHelperFolders.staging -ChildPath "./docfx.build.log"
 
-        $docfx_build = get-content $docfx_build_log  | convertfrom-json -AsHashtable
-        $docfx_build | group-object severity | select-object Name, Count | out-host
+        $docfx_build_vm = Get-DocFxBuildLogViewModel -DocFxLogFile $docfx_build_log
+        $docfx_build_vm.GroupByMessageSeverity | format-table -AutoSize | out-Host
+        $docfx_build_vm | convertTo-Json | set-content $DocFxHelperFiles.docfx_build_vm_json
 
         Write-Host "This will be helpful for helping out writing templates:"
-        Write-Host "docfxhelper view model: [$($DocFxHelperFiles.docfxhelper_json)]"
-        Write-Host "docfxHelper global variable: [`$DocfxHelper)]"
+        Write-Host "  docfx.json: [$($DocFxHelperFiles.docfx_json)]"
+        Write-Host "  docfxhelper view model: [$($DocFxHelperFiles.docfxhelper_json)]"
+        Write-Host "  docfxHelper global variable: [`$DocfxHelper)]"
+        Write-Host "  docfx build view model: [$($DocFxHelperFiles.docfx_build_vm_json)]"
+        Write-Host "  docfx raw Models: [$(Join-Path $DocFxHelperFolders.staging -ChildPath "_rawModel")]"
+        Write-Host "  docfx view Models: [$(Join-Path $DocFxHelperFolders.staging -ChildPath "_viewModel")]"
+        Write-Host "docfxHelper:"
         $DocfxHelper | out-host
+        Write-Host "docfx_build_vm:"
+        $docfx_build_vm | out-host
 
         # ------------------------------------------------------------------------
-        Write-Progress2 -Activity "Building DocFx.json" -Id 0
+        Write-Progress2 -Activity "Building DocFx from [$($DocFxHelperFolders.staging)]" -Id 0
 
         push-location $DocFxHelperFolders.staging
         if (test-path "docfx.build.log") {remove-item "docfx.build.log"}
