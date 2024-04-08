@@ -7,7 +7,7 @@
       "template": [
         "default",
         "modern",
-        "DocFxHelper"
+        "Templates/DocFxHelper"
       ],
       "globalMetadata": {
         "_appName": "Sample Docs Name",

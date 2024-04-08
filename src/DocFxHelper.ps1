@@ -3571,7 +3571,7 @@ function Get-DocFxRemote
       remote = [ordered]@{
         repo = "$CloneUrl"
         branch = "$RepoBranch"
-        path = "/$(($repoRelativePathSegments + $fileRelativePathSegments | where-object {$_ -and $_ -ne "."}) -join "/")"
+        path = "$(($repoRelativePathSegments + $fileRelativePathSegments | where-object {$_ -and $_ -ne "."}) -join "/")"
       }
     }
 }

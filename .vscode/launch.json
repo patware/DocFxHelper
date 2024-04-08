@@ -1,21 +1,22 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "publisher",
-            "type": "PowerShell",
-            "request": "launch",
-            "script": "${workspaceFolder}/src/publisher.ps1",
-            "args": [
-                "-DropsPath", 
-                "/mnt/d/rnd/docker/docfxHelper/virtualVolume/drops/", 
-                "-WorkspacePath", 
-                "/mnt/d/rnd/docker/docfxHelper/virtualVolume/workspace/", 
-                "-SitePath", "/mnt/d/rnd/docker/docfxHelper/virtualVolume/site/"
-            ]
-        }
-    ]
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Publisher.ps1",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "src/publisher.ps1",
+      "cwd": "${cwd}"
+    },
+    {
+      "name": "PowerShell Launch Current File",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${file}",
+      "cwd": "${cwd}"
+    }
+  ]
 }

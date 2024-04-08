@@ -1,9 +1,9 @@
 #Requires -Modules 'Posh-git', 'yayaml', 'Poshstache', 'PlatyPS'
 
 param(
-  [Parameter(Mandatory)][System.IO.DirectoryInfo]$DropsPath,
-  [Parameter(Mandatory)][System.IO.DirectoryInfo]$WorkspacePath,
-  [Parameter(Mandatory)][System.IO.DirectoryInfo]$SitePath
+  [System.IO.DirectoryInfo]$DropsPath = "Drops",
+  [System.IO.DirectoryInfo]$WorkspacePath = "Workspace",
+  [System.IO.DirectoryInfo]$SitePath = "Site"
 )
 
 <#
@@ -21,6 +21,7 @@ $script:Versions = @(
   [ordered]@{version = [Version]"0.0.1.3"; title = "Initial version Write-Host only - omg dockfxhelper typo instead of docfxhelper" }
   [ordered]@{version = [Version]"0.0.2"; title = "Calling specs.ps1" }
   [ordered]@{version = [Version]"0.0.2.1"; title = "Calling specs.ps1 - and added ErrorAction, Information, Debug and Verbose preferences" }
+  [ordered]@{version = [Version]"0.0.3"; title = "Parameters are now optional with default values relative to the user's current folder." }
 )
 
 $script:Version = $script:Versions[-1]
@@ -47,7 +48,8 @@ if (Test-Path $DropsPath) {
   Write-Host "  - drops path - found [$($specsFolders.Drops)]"
 }
 else {
-  Write-Error "  - drops path [$DropsPath] not found"
+  Write-Warning "  - drops path [$DropsPath] not found.  Creating..."
+  $specsFolders.Drops = Join-Path (Get-Location).Path -ChildPath $DropsPath
 }
 
 if (Test-Path $WorkspacePath) {
@@ -55,7 +57,8 @@ if (Test-Path $WorkspacePath) {
   Write-Host "  - Workspace path - found [$($specsFolders.Workspace)]"
 }
 else {
-  Write-Error "  - Workspace path [$WorkspacePath] not found"
+  Write-Warning "  - Workspace path [$WorkspacePath] not found.  Creating..."
+  $specsFolders.Workspace = Join-Path (Get-Location).Path -ChildPath $WorkspacePath
 }
 
 if (Test-Path $SitePath) {
@@ -63,7 +66,8 @@ if (Test-Path $SitePath) {
   Write-Host "  - Site path - found [$($specsFolders.Site)]"
 }
 else {
-  Write-Error "  - Site path [$SitePath] not found"
+  Write-Warning "  - Site path [$SitePath] not found.  Creating..."
+  $specsFolders.Site = Join-Path (Get-Location).Path -ChildPath $SitePath
 }
 
 if ($null -ne $specsFolders.Drops -and $null -ne $specsFolders.Workspace -and $null -ne $specsFolders.Site)

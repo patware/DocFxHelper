@@ -185,7 +185,7 @@ exports.preTransform = function (model) {
     {
       console.log(`model.documentation.remote.path: ${model.documentation.remote.path}`);
       console.log(`docurl before: ${model.docurl}`);
-      model.docurl = `${model._adoWikiUri}?pagePath=${model.documentation.remote.path}`;
+      model.docurl = `${model._adoWikiUri}?pagePath=/${model.documentation.remote.path}`;
       console.log(`[${model.path}] docurl  after: ${model.docurl}`);
     }
     else
