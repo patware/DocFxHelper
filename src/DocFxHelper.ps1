@@ -25,6 +25,9 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.8.2"; title="Copy-Robo platform is Unix not linux"}
     [ordered]@{version=[Version]"0.3.9"; title="Get-AdoWikiTocItem fix typo with trailing slash"}
     [ordered]@{version=[Version]"0.3.10"; title="ConvertTo-DocFx* - yamlheader with _docfxHelper.remote instead of adoWikiAbsolutePath and _gitContribute"}
+    [ordered]@{version=[Version]"0.3.10.1"; title="Fix: Docfx.json ADOwiki attachments wrong dest"}
+    [ordered]@{version=[Version]"0.3.10.2"; title="Fix: ADOWiki moved the _adoWikiUri"}
+    [ordered]@{version=[Version]"0.3.10.3"; title="Multiple ADOWiki fixes stabilization phase"}
 )
 
 $script:DocFxHelperVersion = $DocFxHelperVersions[-1]
@@ -77,6 +80,155 @@ foreach ($requiredModule in $requiredModules)
 }
 
 #region Utilities
+
+<#
+.SYNOPSIS
+Retries a powershell command n-times. 
+
+.DESCRIPTION
+The cmdlet is capable of retrying a PowerShell command passed as a [ScriptBlock] according to the user defined number of retries and timeout (In Seconds)
+
+From Prateek Kumar Singh https://gist.github.com/PrateekKumarSingh/65afe12a3fda5ef9ba42bf0673026728
+
+.PARAMETER TimeoutInSecs
+Timeout in secods for each retry.
+
+.PARAMETER RetryCount
+Number of times to retry the command. Default value is '3'
+
+.PARAMETER ScriptBlock
+PoweShell command as a ScriptBlock that will be executed and retried in case of Errors. Make sure the script block throws an error when it fails, otherwise the cmdlet won't run the retry logic.
+
+.PARAMETER SuccessMessage
+Message displayed when the command was executed successfuly.
+
+.PARAMETER FailureMessage
+Message displayed when the command was failed to execute.
+
+.EXAMPLE
+
+ Invoke-CommandWithRetry -ScriptBlock {Test-Connection 'test.com'} -Verbose
+
+VERBOSE: [1/3] Failed to Complete the task. Retrying in 30 seconds...
+VERBOSE: [2/3] Failed to Complete the task. Retrying in 30 seconds...
+VERBOSE: [3/3] Failed to Complete the task. Retrying in 30 seconds...
+VERBOSE: Failed to Complete the task! Total retry attempts: 3
+VERBOSE: [Error Message] Testing connection to computer 'test.com' failed: Error due to lack of resources
+
+Try test connection to the website that doesn't exists, which will throw host not found error. Any error is caught by the Invoke-CommandWithRetry cmdlet and it will retry to execute test connection 3 more times. By default 3 retry attempts are made at every 30 seconds and you have to explicitly define the 'Verbose' switch to see the retry logic in action.
+
+.EXAMPLE
+
+ Invoke-CommandWithRetry -ScriptBlock {Get-Service bits | Stop-Service} -TimeoutInSecs 2 -RetryCount 5 -Verbose
+
+VERBOSE: [1/5] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: [2/5] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: [3/5] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: [4/5] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: [5/5] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: Failed to Complete the task! Total retry attempts: 5
+VERBOSE: [Error Message] Service 'Background Intelligent Transfer Service (bits)' cannot be stopped due to the following error: Cannot open bits service on computer '.'.
+
+We can customize the number of retry attempts and timeout times using the parameters: '-RetryCount' and '-TimeoutInSecs' respectively.
+
+.EXAMPLE
+
+ Invoke-CommandWithRetry -ScriptBlock {Write-Error -Message 'something went wrong!'} -TimeoutInSecs 2 -Verbose
+
+VERBOSE: [1/3] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: [2/3] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: [3/3] Failed to Complete the task. Retrying in 2 seconds...
+VERBOSE: Failed to Complete the task! Total retry attempts: 3
+VERBOSE: [Error Message] something went wrong!
+
+In some scenarios you would want the retry logic when something fails or you don't get a desired output. In such cases to implement the retry logic, make sure to throw and error in you script block that would be executed
+
+.EXAMPLE
+
+Invoke-CommandWithRetry -ScriptBlock {
+    if(2 -eq 2){
+        throw('Exception occured!')
+    }
+} -TimeoutInSecs 2 -Verbose
+
+VERBOSE: [1/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: [2/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: [3/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: Failed to execute the command! Total retry attempts: 3
+VERBOSE: [Error Message] Exception occured!
+
+You can even define some conditional statements and throw errors to trigger the retry statments in your program.
+
+.EXAMPLE
+
+{Test-Connection 'prateeks.cim'},{Write-Host 'hello'} ,{1/0} | Invoke-CommandWithRetry -TimeoutInSecs 2 -Verbose
+
+VERBOSE: [1/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: [2/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: [3/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: Failed to execute the command! Total retry attempts: 3
+VERBOSE: [Error Message] Testing connection to computer 'prateeks.cim' failed: No such host is known
+
+hello
+VERBOSE: Command executed successfuly!
+
+VERBOSE: [1/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: [2/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: [3/3] Failed to execute the command. Retrying in 2 seconds...
+VERBOSE: Failed to execute the command! Total retry attempts: 3
+VERBOSE: [Error Message] Attempted to divide by zero.
+
+Capable of handling scriptblock's as input through the pipeline.
+
+.NOTES
+General notes
+#>
+
+function Invoke-CommandWithRetry {
+  [CmdletBinding()]
+  param (
+      [parameter(Mandatory, ValueFromPipeline)] 
+      [ValidateNotNullOrEmpty()]
+      [scriptblock] $ScriptBlock,
+      [int] $RetryCount = 3,
+      [int] $TimeoutInSecs = 30,
+      [string] $SuccessMessage = "Command executed successfuly!",
+      [string] $FailureMessage = "Failed to execute the command"
+      )
+      
+  process {
+      $Attempt = 1
+      $Flag = $true
+      
+      do {
+          try {
+              $PreviousPreference = $ErrorActionPreference
+              $ErrorActionPreference = 'Stop'
+              Invoke-Command -ScriptBlock $ScriptBlock -OutVariable Result              
+              $ErrorActionPreference = $PreviousPreference
+
+              # flow control will execute the next line only if the command in the scriptblock executed without any errors
+              # if an error is thrown, flow control will go to the 'catch' block
+              Write-Verbose "$SuccessMessage `n"
+              $Flag = $false
+          }
+          catch {
+              if ($Attempt -gt $RetryCount) {
+                  Write-Verbose "$FailureMessage! Total retry attempts: $RetryCount"
+                  Write-Verbose "[Error Message] $($_.exception.message) `n"
+                  $Flag = $false
+              }
+              else {
+                  Write-Verbose "[$Attempt/$RetryCount] $FailureMessage. Retrying in $TimeoutInSecs seconds..."
+                  Start-Sleep -Seconds $TimeoutInSecs
+                  $Attempt = $Attempt + 1
+              }
+          }
+      }
+      While ($Flag)
+      
+  }
+}
 
 function Copy-Robo
 {
@@ -975,12 +1127,12 @@ function script:AddResource_ToParent
   if ($ParentTocYmlIsRoot)
   {
     Write-Debug "Parent toc.yml is at the root, the href of the tocItem will be the folder/"
-    $childTocItem.href = "$($ResourceRelativePath)/"
+    $childTocItem.href = join-path $ResourceRelativePath -childPath ""
   }
   else
   {
     Write-Debug "Parent toc.yml is at the root, the href of the tocItem will be the folder/toc.yml"
-    $childTocItem.href = "$($ResourceRelativePath)/toc.yml"
+    $childTocItem.href = join-path $ResourceRelativePath -childPath "toc.yml"
   }
 
   if ($Homepage)
@@ -1018,7 +1170,7 @@ function script:AddResource_ToParent
       ParentPath = $ParentTocYml.Directory.FullName
       ChildTocItem = $childTocItem
       ChildTocYml = (Join-Path $ResourceRelativePath -ChildPath "toc.yml")
-      ChildPath = (Resolve-Path $ResourceRelativePath)
+      ChildPath =  (Join-Path $ResourceRelativePath -ChildPath "")
       ChildRelativePath = $ResourceRelativePath
       MenuDisplayName = $MenuDisplayName
       MenuPosition = $MenuPosition
@@ -1372,18 +1524,22 @@ function script:AdoWiki_GetDocFxSafeItemMetadata
 
   Write-Debug "[AdoWiki_GetDocFxSafeItemMetadata] $($mdFile.FullName)"
   $pageUri = [Uri]::new($baseUri, (Resolve-Path -LiteralPath $mdFile.FullName -Relative))
+  $dotOrderUri = [Uri]::new($baseUri, (Join-Path (Resolve-Path -LiteralPath $mdFile.FullName -Relative | split-path) -ChildPath ".order"))
+  $orderItemUri = [Uri]::new($baseUri, (Join-Path (Resolve-Path -LiteralPath $mdFile.FullName -Relative | split-path) -ChildPath $mdFile.BaseName))
   $folder = (Get-ChildItem -LiteralPath $mdFile.Directory.FullName -Directory | where-object { $_.Name -eq $mdFile.BaseName })
 
   [ordered]@{
-    File            = $mdFile                                                                                                       # c:\agent\_work\1\s\foo.md   c:\agent\_work\1\s\Help\A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-).md
-    FileName        = [System.Web.HttpUtility]::UrlDecode($mdFile.Name)                                                             # foo.md                      A---b-c(d)-(e)---(f)---(-h-).md
-    FileAbsolute    = [System.Web.HttpUtility]::UrlDecode($mdFile.FullName)                                                         # c:\agent\_work\1\s\foo.md   c:\agent\_work\1\s\Help\A---b-c(d)-(e)---(f)---(-h-).md
-    FileRelative    = [System.Web.HttpUtility]::UrlDecode((Resolve-Path -LiteralPath $mdFile.FullName -Relative))                                         # .\foo.md                    .\Help\A---b-c(d)-(e)---(f)---(-h-).md
-    FileRelativeUri = [System.Web.HttpUtility]::UrlDecode((Resolve-Path -LiteralPath $mdFile.FullName -Relative).replace("\", "/"))                       # ./foo.md                    ./Help/A---b-c(d)-(e)---(f)---(-h-).md
-    LinkAbsolute    = $pageUri.AbsolutePath                                                                                         # /foo.md                     /Help/A---b-c(d)-(e)---(f)---(-h-).md
-    LinkMarkdown    = $pageUri.Segments[-1]                                                                                         # foo.md                      A---b-c(d)-(e)---(f)---(-h-).md
-    LinkDisplay     = [System.Web.HttpUtility]::UrlDecode($mdfile.BaseName.Replace("\(", "(").Replace("\)", ")").Replace("-", " ")) # foo                         A - b-c(d) (e) - (f) - ( h )
-    FolderName      = [System.Web.HttpUtility]::UrlDecode($folder.Name)                                                             # foo (if folder exists)      A---b-c(d)-(e)---(f)---(-h-) (if folder exists)
+    File              = $mdFile                                                                                                       # c:\agent\_work\1\s\foo.md   c:\agent\_work\1\s\Help\A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-).md
+    FileName          = [System.Web.HttpUtility]::UrlDecode($mdFile.Name)                                                             # foo.md                      A---b-c(d)-(e)---(f)---(-h-).md
+    FileAbsolute      = [System.Web.HttpUtility]::UrlDecode($mdFile.FullName)                                                         # c:\agent\_work\1\s\foo.md   c:\agent\_work\1\s\Help\A---b-c(d)-(e)---(f)---(-h-).md
+    FileRelative      = [System.Web.HttpUtility]::UrlDecode((Resolve-Path -LiteralPath $mdFile.FullName -Relative))                   # .\foo.md                    .\Help\A---b-c(d)-(e)---(f)---(-h-).md
+    FileRelativeUri   = [System.Web.HttpUtility]::UrlDecode((Resolve-Path -LiteralPath $mdFile.FullName -Relative).replace("\", "/")) # ./foo.md                    ./Help/A---b-c(d)-(e)---(f)---(-h-).md
+    LinkAbsolute      = $pageUri.AbsolutePath                                                                                         # /foo.md                     /Help/A---b-c(d)-(e)---(f)---(-h-).md
+    LinkMarkdown      = $pageUri.Segments[-1]                                                                                         # foo.md                      A---b-c(d)-(e)---(f)---(-h-).md
+    LinkDisplay       = [System.Web.HttpUtility]::UrlDecode($mdfile.BaseName.Replace("\(", "(").Replace("\)", ")").Replace("-", " ")) # foo                         A - b-c(d) (e) - (f) - ( h )
+    DotOrderAbsolute  = $dotOrderUri.AbsolutePath
+    OrderItemAbsolute = $orderItemUri.AbsolutePath                                                                                    # /foo                        /Help/A---b-c(d)-(e)---(f)---(-h-)
+    FolderName        = [System.Web.HttpUtility]::UrlDecode($folder.Name)                                                             # foo (if folder exists)      A---b-c(d)-(e)---(f)---(-h-) (if folder exists)
   }
   
 }
@@ -1396,6 +1552,7 @@ function script:AdoWiki_GetDocfxItemMetadata
   $workingDirectory = (Get-Location)
 
   $item = [ordered]@{
+    Guid = (New-Guid).Guid
     AdoWiki   = [ordered]@{
       File             = $mdFile                 # A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-).md [FileInfo]
       FileName         = $mdFile.Name            # A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-).md
@@ -1406,7 +1563,7 @@ function script:AdoWiki_GetDocfxItemMetadata
       LinkAbsolute     = $null                   # /A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-)
       LinkMarkdown     = $null                   # /A-%2D-b%2Dc\(d\)-\(e\)-%2D-\(f\)-%2D-\(-h-\)
       LinkDisplay      = $null                   # A - b-c(d) (e) - (f) - ( h )
-      LinkLookupUri    = $null                   # /A-%2D-b%2Dc\(d\)-\(e\)-%2D-\(f\)-%2D-\(-h-\).md -> used by 
+      DotOrderRelative = $null                   # .order
       Folder           = $null
       FolderName       = $null                   # A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-)
       WikiAbsolutePath = $null                   # /A - b-c(d) (e) - (f) - ( h )
@@ -1426,8 +1583,13 @@ function script:AdoWiki_GetDocfxItemMetadata
     $item.AdoWiki.FolderName = $item.AdoWiki.Folder.Name
   }
   $item.AdoWiki.WikiAbsolutePath = [System.Web.HttpUtility]::UrlDecode($item.AdoWiki.LinkMarkdown.Replace("-", " "))
-  
-  
+
+  $dotOrder = Join-Path $mdFile.Directory.FullName -childpath ".order"
+  if (Test-Path $dotOrder)
+  {
+    $item.AdoWiki.DotOrderRelative = Resolve-Path $dotOrder -relative
+  }
+
   $item.DocFxSafe = AdoWiki_GetDocFxSafeItemMetadata -mdFile $mdFile
   $item.RenameRequired = $item.DocFxSafe.FileName -ne $item.AdoWiki.FileName        # TODO: Confirm still needed or not.  For: filter files that are part of the rename processes
   $item.FileIsRenamed  = $null                                                      # TODO: Confirm still needed or not.  For: filtering of files that have been part of a renaming, moving (file and/or folder)
@@ -2550,7 +2712,7 @@ function Get-AdoWikiTocItem
   param(
     [Parameter(Mandatory)][string]$DisplayName, 
     [Parameter(Mandatory)][System.IO.FileInfo]$DotOrderPath,
-    [Parameter(Mandatory)]$Metadata,
+    $Metadata,
     [switch]$IsRootWiki
   )
 
@@ -2562,7 +2724,7 @@ function Get-AdoWikiTocItem
     name = $DisplayName
   }
 
-  if ($Metadata)
+  if ($null -ne $Metadata)
   {
     $mdFile = $Metadata.File
     
@@ -2596,7 +2758,7 @@ function Get-AdoWikiTocItem
       if ($isRootWiki -and $dotOrderIsRoot -and $mdFile.name -eq "index.md")
       {
         Write-Verbose "  md File is the default site's page, index.md from the root folder of the root wiki.  This toc item is therefor ignored"
-        $ret = $nul
+        $ret = $null
       }
       else
       {
@@ -2670,22 +2832,25 @@ function ConvertTo-DocFxAdoWiki
       Steps performed
         1. Set Yaml Headers
           a. _docfxHelper.remote (was adoWikiAbsolutePath)
-          b. DocFxHelperOrginalFileAbsolute
-        2. Prepare Hyperlinks
+          b. _adoWikiUri
+          c. DocFxHelperOrginalFileAbsolute
+          d. Guid
+        2. Snapshot .order files to the corresponding md file guid
+        3. Prepare Hyperlinks
           a. Update wiki links removing escapes \(->( and \)->)
           b. Convert relative links to absolute
-        3. Rename [md Files] to DocFx safe name format
-        4. Rename [Folders] to DocFx safe name format
-        5. Moving Root [md Files] that should actually be in their subfolder
-        6. Finalize Hyperlinks
+        4. Rename [md Files] to DocFx safe name format
+        5. Rename [Folders] to DocFx safe name format
+        6. Moving Root [md Files] that should actually be in their subfolder
+        7. Finalize Hyperlinks
           a. Update wiki links to .md extension
           b. Update wiki links to match the renamed mdFiles or folder
           c. Convert absolute links to relative
-        7. Update Mermaid Code Delimiters
-        8. Set each page's UID      
-        9. Convert every .order to toc.yml
-        obsolete 10. Set toc.yml Items files that should point to their folder instead of their .md
-        obsolete 11. Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml
+        8. Update Mermaid Code Delimiters
+        9. Set each page's UID      
+        10. Convert every .order to toc.yml
+        obsolete 11. Set toc.yml Items files that should point to their folder instead of their .md
+        obsolete 12. Set Root toc.yml Items to Reference TOCs style /Foo/ instead of /Foo/toc.yml
 
   #>
 
@@ -2704,7 +2869,7 @@ function ConvertTo-DocFxAdoWiki
 
   Write-Debug "WikiUri: $($WikiUri)"
   Write-Debug "Repo Branch: $($RepoBranch)"
-  Write-Debug "Is Child Wiki: $($IsRootWiki)"
+  Write-Debug "Repo Relative Path: $($RepoRelativePath)"
   Write-Debug "Pages UID Prefix: $($PagesUidPrefix)"
   Write-Debug "Use Modern Template: $($UseModernTemplate)"
   Write-Debug "Is Root Wiki: $($IsRootWiki)"
@@ -2723,11 +2888,14 @@ function ConvertTo-DocFxAdoWiki
   Write-Host "   Folder Count: $($folders.Count)"
   Write-Host "   File count: $($allMetadata.Count)"
   
-
-  # ------------------------------------------------------------------------
-  Write-Host "   - [1/9] Set Yaml Headers"
+  
+  # ------------------------------------------------------------------------  
+  Write-Host "   - [1/10] Set Yaml Headers"
   Write-Verbose "     - _docfxHelper.remote"
+  Write-Verbose "     - _adoWikiUri"
   Write-Verbose "     - DocFxHelperOrginalFileAbsolute"
+  Write-Verbose "     - Guid"
+
   foreach ($metadata in $allMetadata)
   {
     <#
@@ -2744,15 +2912,69 @@ function ConvertTo-DocFxAdoWiki
     $mdFileRemote.remote.path = $metadata.AdoWiki.WikiAbsolutePath
 
     # _docfxHelper.remote: Will be used by DocFxHelper DocFx template to generate the "Edit this document" url
+    # used by DocFxHelper DocFx Template
     Util_Set_MdYamlHeader -file $metadata.File -key "_docfxHelper" -value $mdFileRemote
+    
+    # the only practical way to signal that this file is an ADO Wiki page and the path is not this file in the git repo but in the wiki
+    # used by DocFxHelper DocFx Template
+    Util_Set_MdYamlHeader -file $metadata.File -key "_adoWikiUri" -value "$WikiUri"
 
     # the only way to map a renamed/move mdFile to its original metadata
+    # Used by the hyperlink linker
     Util_Set_MdYamlHeader -file $metadata.File -key "DocFxHelperOrginalFileAbsolute" -value $metadata.AdoWiki.FileAbsolute
+    
+    # the only way to map a renamed/move mdFile to the .order's orderItems
+    Util_Set_MdYamlHeader -file $metadata.File -key "DocFxHelperGuid" -value $metadata.Guid
 
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [2/9] Prepare Hyperlinks"
+  Write-Host "   - [2/10] Snapshot .order files to the corresponding md file guid"
+  $dot_orders = Get-ChildItem -path . -Filter ".order" -Recurse
+  foreach ($dot_order in $dot_orders)
+  {
+    <#
+      $dot_order = $dot_orders | select-object -first 1
+      $dot_order = $dot_orders | select-object -first 1 -skip 1
+      $dot_order = $dot_orders | select-object -first 1 -skip 2
+      $dot_order = $dot_orders | select-object -first 1 -skip 3
+      $dot_order
+    #>
+
+    $dot_order_relative = (Resolve-Path $dot_order.FullName -relative)
+    $snapshot_dot_order = (Join-Path $dot_order.Directory.FullName -ChildPath "snapshot.order")
+
+    [void](New-Item $snapshot_dot_order -ItemType File)
+
+    $orderItems = Get-Content $dot_order
+
+    foreach($orderItem in $orderItems)
+    {
+      <#
+        $orderItem = $orderItems | select-object -first 1
+        $orderItem
+
+        $allMetadata.AdoWiki | select-object -first 1
+        $allMetadata.AdoWiki.LinkAbsolute
+      #>
+
+
+      $metadata = $allMetadata | where-object {$_.AdoWiki.DotOrderRelative -eq $dot_order_relative -and $_.AdoWiki.LinkOrderItem -eq $orderItem}
+
+      if ($null -eq $metadata)
+      {
+        Write-Warning "come on !!!"
+      }
+
+      [ordered]@{
+        OrderItem = $orderItem
+        Guid = $metadata.Guid
+      } | ConvertTo-Json -Compress | Add-Content $snapshot_dot_order
+    }
+  }
+
+  # ------------------------------------------------------------------------
+  Write-Host "   - [3/10] Prepare Hyperlinks"
   Write-Verbose "     - a. Update wiki links removing escapes \(->( and \)->)"
   Write-Verbose "     - b. Convert relative links to absolute"
 
@@ -2780,7 +3002,7 @@ function ConvertTo-DocFxAdoWiki
 
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [3/9] Rename [md Files] to DocFx safe name format"
+  Write-Host "   - [4/10] Rename [md Files] to DocFx safe name format"
   foreach ($metadata in $allMetadata | where-object {$_.RenameRequired})
   {
     <#
@@ -2793,13 +3015,14 @@ function ConvertTo-DocFxAdoWiki
     #$metadataDocFxSafeLinkAbsoluteBefore = $metadata.File.FullName.SubString($workingDirectory.Path.Length).Replace("\", "/")
     #$metadata.File = Rename-Item -Path $metadata.AdoWiki.FileAbsolute -NewName $metadata.DocFxSafe.FileName -Force -PassThru
 
-    Move-MdFile -Metadata $metadata -ToPath $metadata.DocFxSafe.FileName
+    $moveTo = (Join-Path (Get-Location).Path -ChildPath $metadata.DocFxSafe.FileRelative)
+    Move-MdFile -Metadata $metadata -ToPath $moveTo
     Add-ToRenameMap -Map $renameMap -Metadata $metadata
     Util_Set_MdYamlHeader -file $metadata.File -key "DocFxSafeFileName" -value $metadata.File.Name
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [4/9] Rename [Folders] to DocFx safe name format"
+  Write-Host "   - [5/10] Rename [Folders] to DocFx safe name format"
   $foldersMetadata = [System.Collections.ArrayList]::new()
   foreach ($folder in $folders)
   {
@@ -2854,7 +3077,7 @@ function ConvertTo-DocFxAdoWiki
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [5/9] Moving Root [md Files] that should actually be in their subfolder"
+  Write-Host "   - [6/10] Moving Root [md Files] that should actually be in their subfolder"
   if ($UseModernTemplate -and $IsRootWiki)
   {    
 
@@ -2884,11 +3107,11 @@ function ConvertTo-DocFxAdoWiki
   }
   else
   {
-    Write-Host "     ... [5/9] Moving Root [md Files] that should actually be in their subfolder ----- This is either a child wiki or a doesn't use Modern Template, skipping..."
+    Write-Host "     ... [6/10] Moving Root [md Files] that should actually be in their subfolder ----- This is either a child wiki or a doesn't use Modern Template, skipping..."
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [6/9] Finalize Hyperlinks"
+  Write-Host "   - [7/10] Finalize Hyperlinks"
   Write-Verbose "     - a. Update wiki links to .md extension"
   Write-Verbose "     - b. Update wiki links to match the renamed mdFiles or folder"
   Write-Verbose "     - c. Convert absolute links to relative"
@@ -2925,7 +3148,7 @@ function ConvertTo-DocFxAdoWiki
 
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [7/9] Update Mermaid Code Delimiters"
+  Write-Host "   - [8/10] Update Mermaid Code Delimiters"
   foreach ($metadata in $allMetadata)
   {
     $mdFile = $metadata.File
@@ -2934,7 +3157,7 @@ function ConvertTo-DocFxAdoWiki
   }
 
   # ------------------------------------------------------------------------
-  Write-Host "   - [8/9] Set each page's UID"
+  Write-Host "   - [9/10] Set each page's UID"
   foreach ($metadata in $allMetadata)
   {
 
@@ -2942,8 +3165,11 @@ function ConvertTo-DocFxAdoWiki
     Util_Set_MdYamlHeader -file $metadata.File -key "uid" -value $pageUID    
   }
 
+  Write-Debug "Reloading folder list because some might have been renamed"
+  $folders = AdoWiki_GetAdoWikiFolders -Path . -Exclude @(".git", ".attachments")
+
   # ------------------------------------------------------------------------
-  Write-Host "   - [9/9] Convert every .order to toc.yml"  
+  Write-Host "   - [10/10] Convert every .order to toc.yml"
   foreach ($folder in $folders)
   {
     <#
@@ -2954,19 +3180,20 @@ function ConvertTo-DocFxAdoWiki
       $folder
     #>
 
-    $dot_order = (Join-Path $folder.FullName -ChildPath ".order")
-    $toc_yml = (Join-Path $folder.Fullname -ChildPath "toc.yml")
+    $snapshot_dot_order = (Join-Path $folder -ChildPath "snapshot.order")
+    $toc_yml = (Join-Path $folder -ChildPath "toc.yml")
 
     $docfx_toc_items = [System.Collections.ArrayList]::new()
 
-    if (Test-Path -LiteralPath $dot_order)
+    if (Test-Path $snapshot_dot_order)
     {
-      Write-Verbose $dot_order
+      Write-Verbose $snapshot_dot_order
 
-      $dot_order_uri = [Uri]::new($baseUri, (Resolve-Path -Path $dot_order -Relative -RelativeBasePath $workingDirectory))
-      $orderItems = Get-Content $dot_order
+      $dot_order = Join-Path (Split-Path $snapshot_dot_order) -ChildPath ".order"
+
+      $snapshot_items = Get-Content $snapshot_dot_order
       <#
-        $orderItems
+        $snapshot_items
       #>
 
       $s = @{}
@@ -2975,26 +3202,28 @@ function ConvertTo-DocFxAdoWiki
         $s.IsRootWiki = $isRootWiki
       }
 
-      foreach($orderItem in $orderItems)
+      foreach($snapshot_item in $snapshot_items)
       {
         <#
-          $orderItem = $orderItems | select-object -first 1
-          $orderItem = $orderItems | select-object -first 1 -skip 1
-          $orderItem = $orderItems | select-object -first 1 -skip 2
-          $orderItem
+          $snapshot_item = $snapshot_items | select-object -first 1
+          $snapshot_item = $snapshot_items | select-object -first 1 -skip 1
+          $snapshot_item = $snapshot_items | select-object -first 1 -skip 2
+          $snapshot_item
+
+          $allMetadata | convertto-json
+
         #>
-        $item_uri = [Uri]::new($dot_order_uri, $orderItem)
-        $metadata = $allMetadata | where-object {$_.AdoWiki.LinkAbsolute -eq $item_uri.AbsolutePath}
-
-        <#
-          $displayName = $orderItem 
-          $DotOrderPath = [System.IO.FileInfo]$dot_order
-          $metadata.File.Fullname
-          $isRootWiki = [switch]$true
-        #>
-
-        $docfx_toc_item = Get-AdoWikiTocItem -displayName $orderItem -Metadata $metadata -DotOrderPath $dot_order @s
-
+        $orderItem = $snapshot_item | ConvertFrom-Json
+        if ($null -ne $orderItem.Guid)
+        {
+          $metadata = $allMetadata | where-object {$_.Guid -eq $orderItem.Guid}
+          
+          $docfx_toc_item = Get-AdoWikiTocItem -displayName $orderItem.OrderItem -Metadata $metadata -DotOrderPath $dot_order @s
+        }
+        else
+        {
+          Write-Warning "Metadata not found for guid [$($orderItem.Guid)]"
+        }
         if ($null -ne $docfx_toc_item)
         {
           [void]$docfx_toc_items.Add($docfx_toc_item)
@@ -3034,9 +3263,11 @@ function ConvertTo-DocFxAdoWiki
     $toc | ConvertTo-Yaml -Depth 10 | Set-Content $toc_yml
   }
 
+  Write-Information "Conversion done"
 
   if ($AllMetadataExportPath)
   {
+    Write-Information "Saving DocFxAdoWiki's metadata to [$($AllMetadataExportPath)]"
     [void](New-Item $AllMetadataExportPath -ItemType File -Force)
     $allMetadata | ConvertTo-Json -Depth 6 | set-content $AllMetadataExportPath
     Write-Host "DocFx Ado Wiki Metadata exported to [$AllMetadataExportPath]"
@@ -3130,31 +3361,26 @@ function Add-AdoWiki {
     }
   }
 
+  $destSegments = [System.Collections.ArrayList]::new()
+
+  foreach($s in ("$($viewModel.Target)".Replace("/", "\").Split("\") | where-object {$_}))
+  {
+    [void]$destSegments.Add($s)
+  }
 
   $adoWikiMeta = [ordered]@{
     Build = [ordered]@{
       Content      = [ordered]@{
           files = @("**/*.yml", "**/*.md")
           src   = (Resolve-Path $Path.FullName -Relative)
+          dest  = Join-Path -Path . -ChildPath "" -AdditionalChildPath $destSegments.ToArray()
       }
       Resource     = [ordered]@{
           files = @(".attachments/**")
           src   = (Resolve-Path $Path.FullName -Relative)
-      }
-
-      FileMetadata = @{
-        _adoWikiUri = [ordered]@{
-          Pattern = ("$((Resolve-Path $Path.FullName -Relative))/**".replace("\", "/") -split "/" | where-object {$_ -and $_ -ne "."}) -join "/"
-          Value   = $viewModel.wikiUrl
-        }
+          dest  =  Join-Path -Path . -ChildPath "" -AdditionalChildPath ($destSegments.ToArray() + ".attachments")
       }
     }
-  }
-
-  if ($viewModel.Target) 
-  {
-      $adoWikiMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
-      $adoWikiMeta.Build.Resource.dest = "$(($viewModel.Target -split "/" | where-object {$_}) -join "/")/.attachments"
   }
 
   Write-Debug "----------------------------------------------"

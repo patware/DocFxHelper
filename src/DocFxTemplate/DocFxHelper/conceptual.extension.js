@@ -40,9 +40,9 @@
 
     - item._adoWikiUri: Wiki URL: https://dev.azure.com/{org}/{teamProject}/_wiki/wikis/{WikiName}
 
-      * NOTE: best location for this: docfx.json > build / fileMetadata / _adoWikiUri / ** / : https://{foo}/{teamProject}/_wiki/wikis/{WikiName}
+      * NOTE: best location for this: file's Yaml Header : https://{foo}/{teamProject}/_wiki/wikis/{WikiName}
       
-      [DocFxHelper]: Add-AdoWiki will add this to docfx.json
+      [DocFxHelper]: ConvertTo-DocFxAdoWiki will add this to each md files's Yaml Header
 
     - item._docfxHelper.remote
         repo: cloneUrl
@@ -97,137 +97,105 @@
 */
 exports.preTransform = function (model) {
 
+  //console.log("DocFxHelper version 0.3.3 - Multiple ADOWiki fixes stabilization phase");
+
   if (model.sourceurl || model.docurl) {
     return model;
   }
 
-  console.log("Before:")
-  console.log("path: " + JSON.stringify(model.path));
-  console.log("source: " + JSON.stringify(model.source));
-  console.log("documentation: " + JSON.stringify(model.documentation));
-  console.log("_docfxHelper: " + JSON.stringify(model._docfxHelper));
+  // console.log("Before:")
+  // console.log("path: " + JSON.stringify(model.path));
+  // console.log("source: " + JSON.stringify(model.source));
+  // console.log("documentation: " + JSON.stringify(model.documentation));
+  // console.log("_docfxHelper: " + JSON.stringify(model._docfxHelper));
 
   if (model._docfxHelper && model._docfxHelper.remote)
   {
     if (!model.source)
     {
-      console.log("model.source not found, creating empty object {}");
+      // console.log("model.source not found, creating empty object {}");
       model.source = {};
     }
 
     if (!model.source.remote)
     {
-      console.log("model.source.remote not found, creating empty object {}");
+      // console.log("model.source.remote not found, creating empty object {}");
       model.source.remote = {};
     }
 
     if (!model.documentation)
     {
-      console.log("model.documentation not found, creating empty object {}");
+      // console.log("model.documentation not found, creating empty object {}");
       model.documentation = {};
     }
 
     if (!model.documentation.remote)
     {
-      console.log("model.documentation.remote not found, creating empty object {}");
+      // console.log("model.documentation.remote not found, creating empty object {}");
       model.documentation.remote = {};
     }
 
     if (model._docfxHelper.remote.repo)
     {
-      console.log(`model._docfxHelper.remote.repo: [${model._docfxHelper.remote.repo}] specified, overriding model.source.remote.repo`);
+      // console.log(`model._docfxHelper.remote.repo: [${model._docfxHelper.remote.repo}] specified, overriding model.source.remote.repo`);
       model.source.remote.repo = model._docfxHelper.remote.repo;
-      console.log(`model._docfxHelper.remote.repo: [${model._docfxHelper.remote.repo}] specified, overriding model.documentation.remote.repo`);
+      // console.log(`model._docfxHelper.remote.repo: [${model._docfxHelper.remote.repo}] specified, overriding model.documentation.remote.repo`);
       model.documentation.remote.repo = model._docfxHelper.remote.repo;
     }
 
     if (model._docfxHelper.remote.branch)
     {
-      console.log(`model._docfxHelper.remote.branch: [${model._docfxHelper.remote.branch}] specified, overriding model.source.remote.branch`);
+      // console.log(`model._docfxHelper.remote.branch: [${model._docfxHelper.remote.branch}] specified, overriding model.source.remote.branch`);
       model.source.remote.branch = model._docfxHelper.remote.branch;
-      console.log(`model._docfxHelper.remote.branch: [${model._docfxHelper.remote.branch}] specified, overriding model.documentation.remote.branch`);
+      // console.log(`model._docfxHelper.remote.branch: [${model._docfxHelper.remote.branch}] specified, overriding model.documentation.remote.branch`);
       model.documentation.remote.branch = model._docfxHelper.remote.branch;
     }
 
     if (model._docfxHelper.remote.path)
     {
-      console.log(`model._docfxHelper.remote.path: [${model._docfxHelper.remote.repo}] specified, overriding model.source.remote.path`);
+      // console.log(`model._docfxHelper.remote.path: [${model._docfxHelper.remote.repo}] specified, overriding model.source.remote.path`);
       model.source.remote.path = model._docfxHelper.remote.path;
-      console.log(`model._docfxHelper.remote.path: [${model._docfxHelper.remote.path}] specified, overriding model.documentation.remote.path`);
+      // console.log(`model._docfxHelper.remote.path: [${model._docfxHelper.remote.path}] specified, overriding model.documentation.remote.path`);
       model.documentation.remote.path = model._docfxHelper.remote.path;
     }
 
     if (model._docfxHelper.startLine)
     {
-      console.log(`model._docfxHelper.startLine: [${model._docfxHelper.startLine}] specified, overriding model.source.startLine`);
+      // console.log(`model._docfxHelper.startLine: [${model._docfxHelper.startLine}] specified, overriding model.source.startLine`);
       model.source.startLine = model._docfxHelper.startLine;
-      console.log(`model._docfxHelper.startLine: [${model._docfxHelper.startLine}] specified, overriding model.documentation.startLine`);
+      // console.log(`model._docfxHelper.startLine: [${model._docfxHelper.startLine}] specified, overriding model.documentation.startLine`);
       model.documentation.startLine = model._docfxHelper.startLine;
     }
 
     if (model._docfxHelper.endLine)
     {
-      console.log(`model._docfxHelper.endLine: [${model._docfxHelper.endLine}] specified, overriding model.source.endLine`);
+      // console.log(`model._docfxHelper.endLine: [${model._docfxHelper.endLine}] specified, overriding model.source.endLine`);
       model.source.endLine = model._docfxHelper.endLine;
-      console.log(`model._docfxHelper.endLine: [${model._docfxHelper.endLine}] specified, overriding model.documentation.endLine`);
+      // console.log(`model._docfxHelper.endLine: [${model._docfxHelper.endLine}] specified, overriding model.documentation.endLine`);
       model.documentation.endLine = model._docfxHelper.endLine;
     }
   }
 
-  console.log("After:")
-  console.log("source: " + JSON.stringify(model.source));
-  console.log("documentation: " + JSON.stringify(model.documentation));
+  // console.log("After:")
+  // console.log("source: " + JSON.stringify(model.source));
+  // console.log("documentation: " + JSON.stringify(model.documentation));
 
   if (model._adoWikiUri) {
-    console.log(`adoWikiUrl: ${model._adoWikiUri}`);
+    // console.log(`_adoWikiUri: ${model._adoWikiUri}`);
 
     if (model.documentation && model.documentation.remote && model.documentation.remote.path)
     {
-      console.log(`model.documentation.remote.path: ${model.documentation.remote.path}`);
-      console.log(`docurl before: ${model.docurl}`);
-      model.docurl = `${model._adoWikiUri}?pagePath=/${model.documentation.remote.path}`;
-      console.log(`[${model.path}] docurl  after: ${model.docurl}`);
+      // console.log(`model.documentation.remote.path: ${model.documentation.remote.path}`);
+      //console.log(`model.docurl before: ${model.docurl}`);
+      model.docurl = `${model._adoWikiUri}?pagePath=${model.documentation.remote.path}`;
+      //console.log(`model.docurl after: ${model.docurl}`);
     }
     else
     {
-      console.log("model.documentation.remote.path: undefined");
+      // console.log("model.documentation.remote.path: undefined");
     }
   }
 
   return model;
 
 }
-
-/*
-    if (model.adoWikiAbsolutePath)
-    {
-      console.log(`[DocFxHelper.transform] [${model.path}] using model.adoWikiAbsolutePath for the path`);
-      mdPath = model.adoWikiAbsolutePath;
-    }
-    else
-    {
-      console.log(`[DocFxHelper.transform] [${model.path}] using model.documentation.remote.path for the path`);
-
-      var relativePath = "/";
-      if (model._gitContribute.relativePath)
-      {
-        console.log(`[DocFxHelper.transform] [${model.path}] but removing specified _gitContribute.relativePath`);
-        relativePath = model._gitContribute.relativePath;
-      }
-      mdPath = mdPath.replace(relativePath,''); 
-
-    }
-
-    if (mdPath.lastIndexOf(".md", mdPath.length - 3) !== -1)
-    {
-      mdPath = mdPath.substring(0, mdPath.length - 3);
-    }
-
-    model.docurl = `${model._gitContribute.AdoWikiUri}?pagePath=${mdPath}`;
-
-    console.log(`[DocFxHelper.transform] [${model.path}] docurl: [${model.docurl}]`)
-*/
-
-// exports.postTransform = function (model) {
-//   return model;
-// }
