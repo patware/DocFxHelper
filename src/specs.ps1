@@ -260,7 +260,7 @@ else {
       Write-Host "  destination: $($destination)"
       $folder = (split-path $destination)
       if (!(Test-Path $folder)) {
-        New-Item $folder -itemType Directory -Force
+        New-Item $folder -itemType Directory -Force | out-null
       }
       ConvertTo-PoshstacheTemplate -InputFile $source -ParametersObject (Get-Content $DocFxHelperFiles.docfxhelper_json | ConvertFrom-Json -AsHashtable) -HashTable -ErrorAction Continue | set-content $destination -Force
     }

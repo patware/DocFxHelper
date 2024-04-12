@@ -882,7 +882,7 @@ function script:ViewModel_getGenericResourceViewModel
     , $Target
     , $MenuParentItemName
     , $MenuDisplayName
-    , $MenuPosition
+    , [int]$MenuPosition = -1
     , $Excludes
     , $Homepage
     , $MenuUid
@@ -1022,104 +1022,168 @@ function script:AddResource_ToParent
     [Parameter(Mandatory)][string]$ResourcePath,
     [Parameter(Mandatory)][string]$MenuDisplayName,
     [string]$MenuParentItemName,
-    [int]$MenuPosition,
+    [int]$MenuPosition = -1,
     [string]$Homepage,
     [string]$MenuUid,
     [switch]$PassThru
   )
 
-  Write-Information "Merging Child resource with [Parent]"
- 
-  #if ($ResourceViewModel.parentId -eq $ResourceViewModel.id)
-  #{
-  #  Write-Verbose "$($ResourceViewModel.id) is the root item, it doesn't have to be merged with itself"
-  #}
+  Write-Information "Merging [$($MenuDisplayName)] into [$($ParentTocYml)]"
+  Write-Debug "ParentTocYml       = [$($ParentTocYml)]"
+  Write-Debug "ParentTocYmlIsRoot = [$($ParentTocYmlIsRoot)]"
+  Write-Debug "ResourcePath       = [$($ResourcePath)]"
+  Write-Debug "MenuDisplayName    = [$($MenuDisplayName)]"
+  Write-Debug "MenuParentItemName = [$($MenuParentItemName)]"
+  Write-Debug "MenuPosition       = [$($MenuPosition)]"
+  Write-Debug "Homepage           = [$($Homepage)]"
+  Write-Debug "MenuUid            = [$($MenuUid)]"
+  Write-Debug "PassThru           = [$($PassThru)]"
+
+  $SafeMenuDisplayName = [System.Web.HttpUtility]::UrlDecode("$MenuDisplayName".Replace("\(", "(").Replace("\)", ")").Replace("-", " "))
+  $SafeMenuParentItemName = [System.Web.HttpUtility]::UrlDecode("$MenuParentItemName".Replace("\(", "(").Replace("\)", ")").Replace("-", " "))
 
   if (!(Test-Path -LiteralPath $ParentTocYml.FullName))
   {
     Write-Debug "Creating empty toc.yml $($ParentTocYml) for the parent"
     if (!(Test-Path -LiteralPath $ParentTocYml.Directory.FullName))
     {
+      Write-Debug "Creating new folder $($ParentTocYml.Directory.FullName) for the toc.yml"
       New-Item $ParentTocYml.Directory.FullName -itemtype Directory -Force | out-null
     }
 
     [PSCustomObject][ordered]@{items = [System.Collections.ArrayList]::new() } | ConvertTo-Yaml -Depth 10 | Set-Content $ParentTocYml
   }
 
-  Write-Information "   ... [$($MenuDisplayName)] merging into [$($ParentTocYml)]"
+  Write-Debug "Loading content of [$($ParentTocYml.FullName)]"
+  $toc = get-content -LiteralPath $ParentTocYml.FullName | ConvertFrom-Yaml
+  <#
 
-  $parentToc = get-content -LiteralPath $ParentTocYml.FullName | ConvertFrom-Yaml
-
-  if ($null -eq $parentToc.items)
+  [PSCustomObject][ordered]@{
+    ParentTocYml           = $ParentTocYml.FullName
+    ResourcePath           = $ResourcePath
+    MenuDisplayName        = $MenuDisplayName
+    SafeMenuDisplayName    = $SafeMenuDisplayName
+    MenuParentItemName     = $MenuParentItemName
+    SafeMenuParentItemName = $SafeMenuParentItemName
+    MenuPosition           = $MenuPosition
+    Homepage               = $Homepage
+    MenuUid                = $MenuUid
+  }
+    
+    $toc | ConvertTo-Yaml -depth 10
+  #>  
+  if ($null -eq $toc.items)
   {
     Write-Debug "toc doesn't have an items collection, creating a new one..."
-    $parentToc.items = @{items = [System.Collections.ArrayList]::new() }
-  }
-
-  if ($MenuParentItemName)
-  {    
-    $parentTocItem = Util_FindTocItemRecursive -InputObject $parentToc -Key "name" -Value $MenuParentItemName
-
-    if ($null -eq $parentTocItem)
-    {
-      $parentTocItem = [ordered]@{
-        name = $MenuParentItemName
-      }
-      $parentToc.items += $parentTocItem
+    $toc = @{
+      items = [System.Collections.ArrayList]::new()
     }
   }
   else
   {
-    $parentTocItem = $parentToc
-  }
-
-  if ($null -eq $parentTocItem.items)
-  {
-    $parentTocItem.items = @()
-  }
-
-  $parentTocItem_items = [System.Collections.ArrayList]::new()
-
-  if ($parentTocItem.items.count -gt 0)
-  {
-    $parentTocItem_items.AddRange($parentTocItem.items)
-  }
-
-  Write-Debug "Looking for a [$($MenuDisplayName)] in parent's toc"
-  $childTocItem = DocFx_GetTocItem -Items $parentToc.items -Name $MenuDisplayName
-
-  if ($null -eq $childTocItem)
-  {
-    Write-Debug "[$($MenuDisplayName)] not found, creating a new toc item"
-    $childTocItem = [ordered]@{
-      name = $MenuDisplayName
-    }
-
-    if ($MenuPosition -and $MenuPosition -ge 0)
+    $items = [System.Collections.ArrayList]::new()
+    foreach($ti in $toc.items)
     {
-      if ($MenuPosition -lt $parentTocItem_Items.count)
+      [void]$items.Add($ti)
+    }
+    $toc.items = $items
+  }
+  
+  <#
+    $toc | ConvertTo-Yaml -depth 10
+    $toc | ConvertTo-Yaml -depth 10 | set-content $ParentTocYml.FullName
+  #>
+
+  $parent = $null
+
+  if ($SafeMenuParentItemName)
+  {
+    foreach($item in $toc.items)
+    {
+      if ($item.name -eq $SafeMenuParentItemName)
       {
-        Write-Debug "Inserting the toc item at desired $($MenuPosition) position"
-        $parentTocItem_Items.Insert($MenuPosition, $childTocItem)
-      }
-      else
-      {
-        Write-Debug "Appending the toc item at the bottom since the menuPosition [$($MenuPosition)] is greater or equal than the number of items [$($parentTocItem_Items.count)]"
-        [void]$parentTocItem_Items.Add($childTocItem)
+        $parent = $item
       }
     }
-    else
+
+    if ($null -eq $parent)
     {
-      Write-Debug "Appending the toc item at the bottom since the menuPosition was not provided"
-      [void]$parentTocItem_Items.Add($childTocItem)
+      $parent = [ordered]@{
+        name = $SafeMenuParentItemName
+        items = [System.Collections.ArrayList]::new()
+      }
+
+      [void]$toc.items.Add($parent)
     }
+  }
+  else
+  {
+    $parent = $toc
+  }
+
+  <#
+    $toc | ConvertTo-Yaml -depth 10
+    $parent | ConvertTo-Yaml -depth 10
+  #>
+
+  if ($null -eq $parent.items)
+  {
+    $parent.items = [System.Collections.ArrayList]::new()
+  }
+
+  if ($parent.items -isnot [System.Collections.ArrayList])
+  {
+    $items = [System.Collections.ArrayList]::new()
+    foreach($ti in $parent.items)
+    {
+      $items.Add($ti)
+    }
+    $parent.items = $items
+  }
+
+  Write-Debug "Looking for a [$($SafeMenuDisplayName)] in toc"
+  $tocItem = $null
+  foreach($ti in $parent.items)
+  {
+    if ($ti.name -eq $SafeMenuDisplayName)
+    {
+      $tocItem = $ti
+    }
+  }
+
+  if ($null -eq $tocItem)
+  {
+    Write-Debug "[$($SafeMenuDisplayName)] not found, creating a new toc item"
+
+    $tocItem = [ordered]@{
+      name = $SafeMenuDisplayName
+    }
+
+    $position = $MenuPosition
+
+    if ($position -lt 0)
+    {
+      $position = $parent.items.count
+    }
+
+    if ($position -gt $parent.items.count)
+    {
+      $position = $parent.items.count
+    }
+
+    $parent.items.Insert($position, $tocItem)
+
   }
   else
   {
     Write-Debug "a toc item already exists in the parent's toc.yml, no need to create a new one."
   }
 
-  $parentTocItem.items = $parentTocItem_Items
+  <#
+    $toc | ConvertTo-Yaml -depth 10
+    $parent | ConvertTo-Yaml -depth 10
+    $tocItem  | ConvertTo-Yaml -depth 10
+  #>
   
   Push-Location (Split-Path $ParentTocYml)
   $ResourceRelativePath = (Resolve-Path $ResourcePath -relative)
@@ -1127,52 +1191,74 @@ function script:AddResource_ToParent
   if ($ParentTocYmlIsRoot)
   {
     Write-Debug "Parent toc.yml is at the root, the href of the tocItem will be the folder/"
-    $childTocItem.href = join-path $ResourceRelativePath -childPath ""
+    $tocItem.href = join-path $ResourceRelativePath -childPath ""
   }
   else
   {
     Write-Debug "Parent toc.yml is at the root, the href of the tocItem will be the folder/toc.yml"
-    $childTocItem.href = join-path $ResourceRelativePath -childPath "toc.yml"
+    $tocItem.href = join-path $ResourceRelativePath -childPath "toc.yml"
   }
+
+  <#
+    $toc | ConvertTo-Yaml -depth 10
+    $parent | ConvertTo-Yaml -depth 10
+    $tocItem  | ConvertTo-Yaml -depth 10
+  #>
 
   if ($Homepage)
   {
-    $childTocItem.homepage = Join-Path $ResourceRelativePath -ChildPath $Homepage
+    $tocItem.homepage = Join-Path $ResourceRelativePath -ChildPath $Homepage
   }
   elseif ($MenuUid)
   {
-    $childTocItem.uid = $MenuUid
+    $tocItem.uid = $MenuUid
   }
   else
   {
-    Write-Warning "Missing homepage or Uid for [$($MenuDisplayName)]"
+    Write-Warning "Missing homepage or Uid for [$($SafeMenuDisplayName)]"
   }
 
-  if (!$HomePage -and $childTocItem.Keys.Contains("homepage"))
+  <#
+    $toc | ConvertTo-Yaml -depth 10
+    $parent | ConvertTo-Yaml -depth 10
+    $tocItem  | ConvertTo-Yaml -depth 10
+  #>
+
+  if ($null -eq $HomePage -and $tocItem.Keys.Contains("homepage"))
   {
-    $childTocItem.Remove("homepage")
+    $tocItem.Remove("homepage")
   }
 
-  if (!$MenuUid -and $childTocItem.Keys.Contains("uid"))
+  if ($null -eq $MenuUid -and $tocItem.Keys.Contains("uid"))
   {
-    $childTocItem.Remove("uid")
+    $tocItem.Remove("uid")
   }
 
-  Write-Debug "Toc Item: `r`n$($childTocItem | ConvertTo-Yaml -Depth 3)"
+  <#
+    $parentTocYml.Fullname
+    $toc | ConvertTo-Yaml -depth 10
+    $parent | ConvertTo-Yaml -depth 10
+    $tocItem  | ConvertTo-Yaml -depth 10
+  #>
+
+  Write-Debug "Toc Item: `r`n$($tocItem | ConvertTo-Yaml -Depth 3)"
   
-  $parentToc | ConvertTo-Yaml -depth 10 | Set-Content $ParentTocYml
+  $toc | ConvertTo-Yaml -depth 10 | Set-Content $ParentTocYml
 
   if ($Passthru)
   {
     return [PSCustomObject][ordered]@{
-      ParentToc = $parentToc
-      ParentTocYml = $ParentTocYml.FullName
-      ParentPath = $ParentTocYml.Directory.FullName
-      ChildTocItem = $childTocItem
-      ChildTocYml = (Join-Path $ResourceRelativePath -ChildPath "toc.yml")
-      ChildPath =  (Join-Path $ResourceRelativePath -ChildPath "")
-      ChildRelativePath = $ResourceRelativePath
+      ParentToc = ($toc | ConvertTo-Yaml -Depth 4)
+      ParentToc_Yml = $ParentTocYml.FullName
+      Parent_Directory = $ParentTocYml.Directory.FullName
+      ResourcePath = "$($ResourcePath)"
+      TocItem = ($tocItem | ConvertTo-Yaml)
+      TocItem_Yml = (Join-Path $ResourcePath -ChildPath "toc.yml")
+      TocItem_RelativePath = $ResourceRelativePath
+      MenuParentItemName = $MenuParentItemName
+      SafeMenuParentItemName = $SafeMenuParentItemName
       MenuDisplayName = $MenuDisplayName
+      SafeMenuDisplayName = $SafeMenuDisplayName
       MenuPosition = $MenuPosition
       HomePage = $HomePage
       MenuUid  = $MenuUid
@@ -1765,7 +1851,7 @@ function script:ConvertTo-DocFxTocItem
       #>
 
       $toc_item = [ordered]@{
-        name = $item.orderItem
+        name = [System.Web.HttpUtility]::UrlDecode("$($item.orderItem)".Replace("\(", "(").Replace("\)", ")").Replace("-", " "))
         href = "$((split-path $item.orderItem_mdFile_path -leaf))"
       }
 
@@ -2721,7 +2807,7 @@ function Get-AdoWikiTocItem
   Write-Debug "mdFile: [$($metadata.File.FullName)]"
 
   $ret = [ordered]@{
-    name = $DisplayName
+    name = [System.Web.HttpUtility]::UrlDecode("$($DisplayName)".Replace("\(", "(").Replace("\)", ")").Replace("-", " "))
   }
 
   if ($null -ne $Metadata)
@@ -3286,7 +3372,7 @@ function Add-AdoWiki {
       [string]$Target,
       [string]$MenuParentItemName,
       [string]$MenuDisplayName,
-      [int]$MenuPosition,
+      [int]$MenuPosition = -1,
       [string]$Homepage,
       [string]$MenuUid,
       [string[]]$Excludes,
@@ -3400,7 +3486,7 @@ function Add-DotnetApi
     [string]$Target,
     [string]$MenuParentItemName,
     [string]$MenuDisplayName,
-    [int]$MenuPosition,
+    [int]$MenuPosition = -1,
     [string]$MenuUid,
     [string[]]$Excludes,
     [string[]]$Medias,
@@ -3499,7 +3585,7 @@ function Add-RestApi
     [string]$Target,
     [string]$MenuParentItemName,
     [string]$MenuDisplayName,
-    [int]$MenuPosition,
+    [int]$MenuPosition = -1,
     [string]$MenuUid,
     [string[]]$Excludes,
     [string[]]$Medias,
@@ -3653,7 +3739,7 @@ function Add-Conceptual
     [string]$Target,
     [string]$MenuParentItemName,
     [string]$MenuDisplayName,
-    [int]$MenuPosition,
+    [int]$MenuPosition = -1,
     [string]$Homepage,
     [string]$MenuUid,
     [string[]]$Excludes,
@@ -3867,7 +3953,7 @@ function Add-PowerShellModule
     [string]$Target,
     [string]$MenuParentItemName,
     [string]$MenuDisplayName,
-    [int]$MenuPosition,
+    [int]$MenuPosition = -1,
     [string]$Homepage,
     [string]$MenuUid,
     [string[]]$Excludes,

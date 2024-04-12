@@ -57,7 +57,7 @@ class DocSpecResource : DocSpec {
   [Uri]$CloneUrl
   [string]$MenuParentItemName
   [string]$MenuDisplayName
-  [int]$MenuPosition
+  [int]$MenuPosition = -1
   [string]$Homepage
   [string]$MenuUid
   [string]$RepoRelativePath
