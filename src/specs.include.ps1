@@ -493,6 +493,7 @@ function ConvertTo-PowerShellModuleFunctionHelp {
       New-Item $Target -ItemType Directory | Out-Null
     }
 
+    Write-Debug "[PlatyPs] New-MarkdownHelp -Command $name"
     $generated = New-MarkdownHelp -Command $name -OutputFolder $Target -Verbose -Force
 
     if ([string]::IsNullOrEmpty($ModuleRelativePath)) {
@@ -521,6 +522,12 @@ function ConvertTo-PowerShellModuleFunctionHelp {
 function Get-PowerShellModuleViewModel {
   param($moduleDetails, $ModuleRelativePath, $CloneUrl, $RepoBranch = "main")
 
+  Write-Debug "Get-PowerShellModuleViewModel"
+  Write-Debug "moduleDetails      = [$($moduleDetails)]"
+  Write-Debug "ModuleRelativePath = [$($ModuleRelativePath)]"
+  Write-Debug "CloneUrl           = [$($CloneUrl)]"
+  Write-Debug "RepoBranch         = [$($RepoBranch)]"
+
   $href = Get-PowerShellModuleItemUri -CloneUrl $CloneUrl -ModuleRelativePath $ModuleRelativePath -ItemRelativePath $moduleDetails.RootModule
 
   $ret = [ordered]@{
@@ -539,7 +546,7 @@ function Get-PowerShellModuleViewModel {
     Branch             = $RepoBranch
     Path               = "$href".Split("?path=")[1]
     RootModuleUri      = "$href"
-    ExportedFunctions  = $moduleDetails.ExportedFunctions.Values | sort-object | get-help | select-object name, Synopsis
+    ExportedFunctions  = Get-Command -module $moduleDetails.Name | sort-object Name | get-help | select-object name, Synopsis
     Raw                = $moduleDetails
   }
 
@@ -686,7 +693,7 @@ function Convert-DocResource {
       $moduleDetails = Get-Module $spec.Name
       $exportedFunctions = Get-PowerShellModuleExportedFunction -ModuleDetails $moduleDetails
       $exportedFunctions | ConvertTo-PowerShellModuleFunctionHelp -CloneUrl $spec.CloneUrl -ModuleRelativePath $spec.RepoRelativePath -RepoBranch $spec.Branch -Target $Destination
-      $viewModel = Get-PowerShellModuleViewModel -moduleDetails $moduleDetails -CloneUrl $spec.CloneUrl $spec.RepoRelativePath -RepoBranch $spec.Branch
+      $viewModel = Get-PowerShellModuleViewModel -moduleDetails $moduleDetails -CloneUrl $spec.CloneUrl -ModuleRelativePath $spec.RepoRelativePath -RepoBranch $spec.Branch
       New-PowerShellModuleIndex -ViewModel $viewModel -Target $Destination
       New-PowerShellModuleToc -ViewModel $viewModel -Target $Destination
             

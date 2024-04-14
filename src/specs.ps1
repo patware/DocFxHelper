@@ -32,6 +32,8 @@ param(
     $VerbosePreference = 'Continue'
 #>
 
+$env:DocFxHelper_Publisher = $true
+
 . $PSScriptRoot/specs.include.ps1
 
 $script:SpecsVersions = @(
