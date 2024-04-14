@@ -42,6 +42,7 @@ $script:SpecsVersions = @(
   [ordered]@{version = [Version]"0.1.10"; title = "Checking if specs are valid" }
   [ordered]@{version = [Version]"0.1.10.1"; title = "Copy-Robo renamed para -ShowVerbose" }
   [ordered]@{version = [Version]"0.1.11"; title = "If no specs found in Drops, use those from Samples" }
+  [ordered]@{version = [Version]"0.1.12"; title = "Add Invoke-CommandWithRetry for failing commands" }
 )
 
 $script:SpecsVersion = $SpecsVersions[-1]
@@ -259,9 +260,9 @@ else {
       Write-Host "  destination: $($destination)"
       $folder = (split-path $destination)
       if (!(Test-Path $folder)) {
-        New-Item $folder -itemType Directory -Force
+        New-Item $folder -itemType Directory -Force | out-null
       }
-      ConvertTo-PoshstacheTemplate -InputFile $source -ParametersObject (Get-Content $DocFxHelperFiles.docfxhelper_json | ConvertFrom-Json -AsHashtable) -HashTable | set-content $destination -Force
+      ConvertTo-PoshstacheTemplate -InputFile $source -ParametersObject (Get-Content $DocFxHelperFiles.docfxhelper_json | ConvertFrom-Json -AsHashtable) -HashTable -ErrorAction Continue | set-content $destination -Force
     }
 
     # ------------------------------------------------------------------------
@@ -269,10 +270,10 @@ else {
 
     push-location $DocFxHelperFolders.staging
     if (test-path "docfx.build.log") { remove-item "docfx.build.log" }
-    if (test-path "dryRun_site") { remove-item "dryRun_site" -Recurse -Force }
-    if (test-path "dryRun_debug") { remove-item "dryRun_debug" -Recurse -Force }
-    if (test-path "_rawModel") { remove-item "_rawModel" -Recurse -Force }
-    if (test-path "_viewModel") { remove-item "_viewModel" -Recurse -Force }
+    if (test-path "dryRun_site") { Invoke-CommandWithRetry {remove-item "dryRun_site" -Recurse -Force}}
+    if (test-path "dryRun_debug") { Invoke-CommandWithRetry {remove-item "dryRun_debug" -Recurse -Force }}
+    if (test-path "_rawModel") { Invoke-CommandWithRetry {remove-item "_rawModel" -Recurse -Force }}
+    if (test-path "_viewModel") { Invoke-CommandWithRetry {remove-item "_viewModel" -Recurse -Force }}
     & docfx build --log "docfx.build.log" --verbose --output "dryRun_site" --debugOutput "dryRun_debug" --dryRun  --exportRawModel --rawModelOutputFolder _rawModel --exportViewModel --viewModelOutputFolder _viewModel --maxParallelism 1
     Pop-Location
 
@@ -299,8 +300,8 @@ else {
 
     push-location $DocFxHelperFolders.staging
     if (test-path "docfx.build.log") { remove-item "docfx.build.log" }
-    if (test-path "dryRun_site") { remove-item "dryRun_site" -Recurse -Force }
-    if (test-path "dryRun_debug") { remove-item "dryRun_debug" -Recurse -Force }
+    if (test-path "dryRun_site") { Invoke-CommandWithRetry {remove-item "dryRun_site" -Recurse -Force }}
+    if (test-path "dryRun_debug") { Invoke-CommandWithRetry {remove-item "dryRun_debug" -Recurse -Force }}
 
     & docfx build --log "docfx.build.log" --verbose --debugOutput "_debug" 
     $source = (get-item _site).FullName

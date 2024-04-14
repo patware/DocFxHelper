@@ -17,6 +17,7 @@ $script:SpecsIncludeVersions = @(
   [ordered]@{version = [Version]"0.1.9"; title = "Conceptual" }
   [ordered]@{version = [Version]"0.1.10"; title = "Using new docfxhelper as remote meta" }
   [ordered]@{version = [Version]"0.1.11"; title = "PowershellModule remove fake ps repo, Import-Module from path to psd1/psm1" }
+  [ordered]@{version = [Version]"0.1.12"; title = "Add properties Medias and Excludes to DocSpecResource type" }
 )
 
 $script:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
@@ -56,11 +57,13 @@ class DocSpecResource : DocSpec {
   [Uri]$CloneUrl
   [string]$MenuParentItemName
   [string]$MenuDisplayName
-  [int]$MenuPosition
+  [int]$MenuPosition = -1
   [string]$Homepage
   [string]$MenuUid
   [string]$RepoRelativePath
   [string]$Branch = "main"
+  [string[]]$Excludes = @()
+  [string[]]$Medias = @()
 
   hidden [string]$_virtualPath
   [string]VirtualPath() {
