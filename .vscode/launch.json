@@ -5,6 +5,12 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Publisher.ps1 from current folder",
+      "type": "PowerShell",
+      "request": "launch",
+      "script": "${cwd}/src/publisher.ps1"
+    },
+    {
       "name": "Publisher.ps1",
       "type": "PowerShell",
       "request": "launch",
