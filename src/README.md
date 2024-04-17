@@ -1,17 +1,47 @@
-# Azure DevOps Pipeline
+# README
 
-Your "docs" pipeline will most probably have [multiple stages](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/stages?view=azure-devops&tabs=yaml) and multiple sources like other git repos and/or Pipeline Outputs.
+DocFxHelper converts and integrates various resources types into a format that DocFx can work with.
 
-The present version of DocFxHelper.ps1 supports the following scenarios:
+The resource types are: Ado Wiki, dotnet class library, REST api, PowerShell module and classic docfx conceptual sites.
 
-| Resource Type           | resources.repositories | resources.pipeline |
-| ---                     | ---                    |  ---               |
-| Ado Wiki                | Yes                    | No                 |
-| Conceptual docs         | No                     | Yes                |
-| API Generated Yaml Docs | No                     | Yes                |
-| PowerShell Modules docs | No                     | Yes                |
+Each resource type requires a json specification file (specs.docs.json) that contains the instructions DocFxHelper needs to convert the resources into a format and structure that DocFx requires, and to build the proper hierarchy (parent-child relationship).
 
-The resources.repositories and resources.pipeline above refer to the yaml resources types available in [Azure DevOps Pipelines](https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources?view=azure-pipelines).
+| Type | Name | Resource files |
+| --- | --- | --- |
+| Main | Start/Initializer | Docfx files like docfx.json and templates |
+| AdoWiki | Azure DevOps Wiki files | the git repo of the ADO Wiki |
+| DotnetApi | .net class library | compiled (.dll) with SourceLink |
+| RestApi | Swagger doc |  [untested] |
+| PowershellModule | PowerShell Module | Source code (psm1, psd1, ps1) |
+| Conceptual | Classic Docfx conceptual site | All files, the docfx.json is ignored |
+
+## Specs.docs.json
+
+Each resource is defined in a json file (specs.docs.json) and contains properties that are unique to each.
+
+Here's a table of mapping properties and resource type:
+
+| Property           | Type       | Default Value           | Main     | AdoWiki  | DotnetApi | RestApi  | PowershellModule | Conceptual |
+|--------------------|------------|-------------------------|----------|----------|-----------|----------|------------------|------------|
+| Id                 | string     |                         | No       | Required | Required  | Required | Required         | Required   |
+| Templates          | Template[] |                         | Optional | Optional | Optional  | Optional | Optional         | Optional   |
+| Name               | string     | {MenuDisplayName}, {Id} | No       | Optional | Optional  | Optional | Required         | Optional   |
+| ParentId           | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| Target             | string     | /                       | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| IsRoot             | bool       | false                   | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| CloneUrl           | URI        |                         | No       | Required | Required  | Required | Required         | Required   |
+| MenuParentItemName | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| MenuDisplayName    | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| MenuPosition       | int        | -1                      | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| Homepage           | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| MenuUid            | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| RepoRelativePath   | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| Branch             | string     | main                    | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| Excludes           | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| Medias             | string     |                         | No       | Optional | Optional  | Optional | Optional         | Optional   |
+| DocFx_Json         | string     |                         | Optional | No       | No        | No       | No               | No         |
+| WikiUrl            | URI        |                         | No       | Required | No        | No       | No               | No         |
+| Psd1               | string     | {Name}.[psd1]           | No       | No       | No        | No       | Optional         | No         |
 
 ## Setup
 

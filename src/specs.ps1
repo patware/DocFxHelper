@@ -93,7 +93,7 @@ $retry = 0
 do
 {
   $retry++
-  $specs_docs_json_list = Get-ChildItem -Path $DropsPath -Filter "specs.docs.json" -Recurse
+  $specs_docs_json_list = Get-ChildItem -Path $DropsPath -Filter "specs.docs.json" -Recurse -Force
 
   if ($specs_docs_json_list.Count -eq 0) {
     Write-Warning "No specs.docs.json file found in $DropsPath"
