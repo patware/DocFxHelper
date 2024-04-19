@@ -1,0 +1,16 @@
+# kubectl apply -f site-pvc.yaml
+# kubectl delete -f site-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: site-pvc
+  name: site-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+  storageClassName: hostpath
+  volumeName: site-pv

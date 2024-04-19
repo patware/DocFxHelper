@@ -1,0 +1,16 @@
+# kubectl apply -f workspace-pvc.yaml
+# kubectl delete -f workspace-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: workspace-pvc
+  name: workspace-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+  storageClassName: hostpath
+  volumeName: workspace-pv

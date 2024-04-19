@@ -43,6 +43,75 @@ Here's a table of mapping properties and resource type:
 | WikiUrl            | URI        |                         | No       | Required | No        | No       | No               | No         |
 | Psd1               | string     | {Name}.[psd1]           | No       | No       | No        | No       | Optional         | No         |
 
+## Using DocFxHelper
+
+DocFxHelper script works with 3 folders:
+
+| Name | Usage |
+| --- | --- |
+| Drops | Where each resource will drop their pipeline artifacts |
+| Workspace | DocFxHelper's working folder |
+| Site | The DocFx generated site |
+
+Note: Tested with the following setup
+
+- workstation: Windows, with WSL and Docker for Desktop
+  - WSL: Ubuntu
+  - Docker for Destkop: WSL Integration enabled
+    - Distribution: Ubuntu
+
+| Folder    | Windows                      | WSL - Ubuntu                     |
+|-----------|------------------------------|----------------------------------|
+| Drops     | C:\dev\docfxhelper\Drops     | /mnt/c/dev/docfxhelper/Drops     |
+| Workspace | C:\dev\docfxhelper\Workspace | /mnt/c/dev/docfxhelper/Workspace |
+| Site      | C:\dev\docfxhelper\Site      | /mnt/c/dev/docfxhelper/Site      |
+
+From Ubuntu.
+
+```bash
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Drops drops
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Workspace workspace
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Site site
+```
+
+Note: Tested with the following resources
+
+| Name             | Spec Type        | Content                                       |
+|------------------|------------------|-----------------------------------------------|
+| MainDocs         | Main             | docfx.json, custom docfx template             |
+| WikiMain         | AdoWiki          | copy of git repo, excluding .git folder       |
+| WikiChild        | AdoWiki          | copy of git repo, excluding .git folder       |
+| SimpleConceptual | Conceptual       | md and toc.yml files                          |
+| myDotNetApi      | DotnetApi        | library compiled files (dll, pdb, xml)        |
+| myPSModule       | PowershellModule | all PowerShell source files (psd1, psm1, ps1) |
+
+### Command line
+
+### docker
+
+From Ubuntu (WSL), this src folder.
+
+Build the docker images:
+
+```bash
+docker build -f publisher.dockerfile -t publisher:local .
+docker build -f site.dockerfile -t site:local .
+```
+
+Run the docker containers
+
+```bash
+docker run --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site publisher:local
+docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" site:local
+```
+
+Now, browse to [http://localhost:8083/](http://localhost:8083/)
+
+### docker-compose
+
+### Kubernetes
+
+
 ## Setup
 
 ### Docker Compose

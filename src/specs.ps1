@@ -50,6 +50,8 @@ $script:SpecsVersions = @(
 $script:SpecsVersion = $SpecsVersions[-1]
 Write-Host "specs.ps1 Version [$($SpecsVersion.Version)] $($SpecsVersion.title)"
 
+copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "specs.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
 $DocFxHelperFolders = [ordered]@{
   sources   = (Join-Path $WorkspacePath -ChildPath "sources")
   converted = (Join-Path $WorkspacePath -ChildPath "converted")
@@ -163,6 +165,8 @@ else {
     # ------------------------------------------------------------------------
     Write-Host "Converting Doc Resources (ConvertTo-DocFx*)"
 
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "conversion.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
     Write-Host "Converting Main"
     Write-Host "  - Copy from [Workspace.Sources] to [Workspace.Converted]"
     $source = join-path $DocFxHelperFolders.sources -ChildPath $specs.Main.Path.Name
@@ -200,6 +204,8 @@ else {
 
     # ------------------------------------------------------------------------
     Write-Host "Generating DocFx.json for resources"
+
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "assembly.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
 
     if ($specs.Main.DocFx_Json) {
       Write-Host "  - New [Workspace.Staging]/Docfx.json from Main Spec's $($specs.Main.DocFx_Json.Name)"
@@ -270,6 +276,8 @@ else {
     # ------------------------------------------------------------------------
     Write-Host "DryRun Building DocFx"
 
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "dryrun.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
     push-location $DocFxHelperFolders.staging
     if (test-path "docfx.build.log") { remove-item "docfx.build.log" }
     if (test-path "dryRun_site") { Invoke-CommandWithRetry {remove-item "dryRun_site" -Recurse -Force}}
@@ -300,6 +308,8 @@ else {
     # ------------------------------------------------------------------------
     Write-Host "Building DocFx from [$($DocFxHelperFolders.staging)]"
 
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "build.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
     push-location $DocFxHelperFolders.staging
     if (test-path "docfx.build.log") { remove-item "docfx.build.log" }
     if (test-path "dryRun_site") { Invoke-CommandWithRetry {remove-item "dryRun_site" -Recurse -Force }}
@@ -309,6 +319,7 @@ else {
     $source = (get-item _site).FullName
     $destination = $SitePath.FullName
 
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "publish.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
     Write-Host "Site generated.  Copying to final destination"
     Write-Host "         site: $($source)"
     Write-Host "  destination: $($destination)"

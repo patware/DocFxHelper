@@ -1,0 +1,16 @@
+# kubectl apply -f drops-pvc.yaml
+# kubectl delete -f drops-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    io.kompose.service: drops-pvc
+  name: drops-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+  storageClassName: hostpath
+  volumeName: drops-pv

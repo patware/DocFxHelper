@@ -37,6 +37,34 @@ Write-Host "Current Folder: [$(get-location)]"
 Write-Host ""
 Write-Host "Verifying parameters provided"
 
+$global:PublisherSitePath = Join-Path (Get-Location).Path -ChildPath "publishersite"
+$global:PublisherLogsPath = Join-Path (Get-Location).Path -ChildPath "publisherlogs"
+
+if (Test-Path $PublisherSitePath)
+{
+  Write-Host "Folder publishersite found [$($PublisherSitePath)]"
+}
+else
+{
+  Write-Host "Folder publishersite not found.  Creating [$($PublisherSitePath)]"
+  New-Item $PublisherSitePath -ItemType Directory -Force
+  Write-Host "Created folder publishersite [$($PublisherSitePath)]"
+}
+
+if (Test-Path $PublisherLogsPath)
+{
+  Write-Host "Folder publisherlogs found [$($PublisherLogsPath)]"
+}
+else
+{
+  Write-Host "Folder publisherlogs not found.  Creating [$($PublisherLogsPath)]"
+  New-Item $PublisherLogsPath -ItemType Directory -Force
+  Write-Host "Created folder publisherlogs [$($PublisherLogsPath)]"
+}
+
+copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "starting.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
+
 $specsFolders = @{
   Drops     = $null
   Workspace = $null
@@ -70,6 +98,7 @@ else {
   $specsFolders.Site = Join-Path (Get-Location).Path -ChildPath $SitePath
 }
 
+
 if ($null -ne $specsFolders.Drops -and $null -ne $specsFolders.Workspace -and $null -ne $specsFolders.Site)
 {
   $specs_ps1 = (Join-Path $PSScriptRoot -ChildPath "specs.ps1")
@@ -83,3 +112,5 @@ else
 {
   Write-Warning "Missing folder.  Exiting..."
 }
+
+copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "finished.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
