@@ -1,0 +1,15 @@
+# kubectl apply -f publisher-svc.yaml
+# kubectl delete -f publisher-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: publisher-svc
+spec:
+  ports:
+    - name: "8086"
+      port: 8086
+      nodePort: 30001
+      targetPort: 80
+  selector:
+    app: publisher
+  type: NodePort

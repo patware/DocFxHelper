@@ -285,11 +285,29 @@ function Copy-Robo
     if ($ShowVerbose) { $a += "/V" }
   }
 
+  $destinationParentFolder = (Split-Path $destination)
+
+  if (Test-Path $destinationParentFolder)
+  {
+    Write-Debug "Parent folder $destinationParentFolder already exists"
+  }
+  else
+  {
+    Write-Debug "Parent folder $destinationParentFolder not found, creating"
+    New-Item $destinationParentFolder -ItemType Directory -Force
+  }
+
   Write-Host "Running $cmd $($a -join " ")"
   $res = & $cmd @a
   if ($cmd -eq "robocopy")
   {
     if ($LastExitCode -gt 7)
+    {
+      Write-Error ($res | out-string)
+    }
+  }elseif ($cmd -eq "rsync")
+  {
+    if ($LastExitCode -ne 0)
     {
       Write-Error ($res | out-string)
     }
@@ -1369,7 +1387,7 @@ function script:DocFx_AddViewModel
   #>
 
   $docfx | ConvertTo-Json -Depth 4 | Set-Content -Path $Path -Force
-  Write-Host "Resource [$($Meta.Path)] added to docfx"
+  Write-Host "Resource [$($Path.Name)] added to docfx"
 }
 
 # function script:DocFx_Get_TocDepth
@@ -1406,7 +1424,7 @@ function script:DocFx_FixTocItemsThatShouldPointToTheirFolderInstead
 
   Write-Information "Fixing toc items with an href pointing to an .md file when in fact it should point to their subfolder"
   
-  $tableOfContents = get-childitem -path $Path.FullName -filter "toc.yml" -Recurse
+  $tableOfContents = get-childitem -path $Path.FullName -filter "toc.yml" -Recurse -Force
 
   foreach ($tableOfContent_yml in $tableOfContents)
   {
@@ -1599,7 +1617,7 @@ function script:AdoWiki_GetWikiMarkdowns
   {
     foreach($f in $Folder)
     {
-      return Get-ChildItem -path $f -File -Filter "*.md"
+      return Get-ChildItem -path $f -File -Filter "*.md" -Force
     }  
   }
 }
@@ -1612,7 +1630,7 @@ function script:AdoWiki_GetDocFxSafeItemMetadata
   $pageUri = [Uri]::new($baseUri, (Resolve-Path -LiteralPath $mdFile.FullName -Relative))
   $dotOrderUri = [Uri]::new($baseUri, (Join-Path (Resolve-Path -LiteralPath $mdFile.FullName -Relative | split-path) -ChildPath ".order"))
   $orderItemUri = [Uri]::new($baseUri, (Join-Path (Resolve-Path -LiteralPath $mdFile.FullName -Relative | split-path) -ChildPath $mdFile.BaseName))
-  $folder = (Get-ChildItem -LiteralPath $mdFile.Directory.FullName -Directory | where-object { $_.Name -eq $mdFile.BaseName })
+  $folder = (Get-ChildItem -LiteralPath $mdFile.Directory.FullName -Directory -Force | where-object { $_.Name -eq $mdFile.BaseName })
 
   [ordered]@{
     File              = $mdFile                                                                                                       # c:\agent\_work\1\s\foo.md   c:\agent\_work\1\s\Help\A-%2D-b%2Dc(d)-(e)-%2D-(f)-%2D-(-h-).md
@@ -1663,7 +1681,7 @@ function script:AdoWiki_GetDocfxItemMetadata
   $item.AdoWiki.LinkAbsoluteMd = $item.AdoWiki.FileRelativeUri.Substring(1)
   $item.AdoWiki.LinkMarkdown = $item.AdoWiki.LinkAbsolute.Replace("\(", "(").Replace("\)", ")")
   $item.AdoWiki.LinkDisplay = [System.Web.HttpUtility]::UrlDecode($item.AdoWiki.LinkOrderItem.Replace("\(", "(").Replace("\)", ")").Replace("-", " "))
-  $item.AdoWiki.Folder = (Get-ChildItem -Path $mdFile.Directory -Directory | where-object { $_.Name -eq $item.AdoWiki.LinkOrderItem })
+  $item.AdoWiki.Folder = (Get-ChildItem -Path $mdFile.Directory -Directory -Force | where-object { $_.Name -eq $item.AdoWiki.LinkOrderItem })
   if ($item.AdoWiki.Folder)
   {
     $item.AdoWiki.FolderName = $item.AdoWiki.Folder.Name
@@ -1713,7 +1731,7 @@ function script:AdoWiki_GetAdoWikiFolders
 
   $folders.Add((Get-Item $Path)) | Out-null
 
-  $subFolders = Get-ChildItem -path $Path -Recurse -Directory
+  $subFolders = Get-ChildItem -path $Path -Recurse -Directory -Force
 
   foreach ($subFolder in $subFolders)
   {
@@ -2830,7 +2848,7 @@ function Get-AdoWikiTocItem
   {
     Write-Debug "Metadata not provided, looking for a file with the .order item [$($DisplayName)] near [$($DotOrderPath)]"
     
-    $mdFile = Get-ChildItem -Path $DotOrderPath.Directory -Filter "$($DisplayName).md" | select-object -first 1
+    $mdFile = Get-ChildItem -Path $DotOrderPath.Directory -Filter "$($DisplayName).md" -Force | select-object -first 1
   }
 
   if ($mdFile)
@@ -3016,7 +3034,7 @@ function ConvertTo-DocFxAdoWiki
 
   # ------------------------------------------------------------------------
   Write-Host "   - [2/10] Snapshot .order files to the corresponding md file guid"
-  $dot_orders = Get-ChildItem -path . -Filter ".order" -Recurse
+  $dot_orders = Get-ChildItem -path . -Filter ".order" -Recurse -Force
   foreach ($dot_order in $dot_orders)
   {
     <#
@@ -3167,7 +3185,7 @@ function ConvertTo-DocFxAdoWiki
   if ($UseModernTemplate -and $IsRootWiki)
   {    
 
-    $rootMdFiles = Get-Childitem -path . -filter "*.md" | where-object {$_.Name -ne "index.md"}
+    $rootMdFiles = Get-Childitem -path . -filter "*.md" -Force | where-object {$_.Name -ne "index.md"}
     
     foreach($mdFile in $rootMdFiles)
     {
@@ -3693,7 +3711,7 @@ function ConvertTo-DocFxConceptual
       
   Push-Location $Path
   
-  $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse
+  $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse -Force
   
   Write-Host "$($mdFiles.count) conceptual markdown files found"
 
@@ -3908,7 +3926,7 @@ function ConvertTo-DocFxPowerShellModule
       
   Push-Location $Path
   
-  $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse
+  $mdFiles = get-childitem -Path . -Filter "*.md" -Recurse -Force
 
   Write-Host "$($mdFiles.count) PowerShell Module markdown files found"
   

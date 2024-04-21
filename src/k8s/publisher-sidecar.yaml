@@ -1,0 +1,68 @@
+# Run: kubectl apply -f publisher-sidecar.yaml
+# list: 
+#    kubectl get deploy
+#    kubectl get pod
+# describe:
+#    kubectl describe deploy/publisher
+# Delete: kubectl delete -f publisher-sidecar.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: publisher # Name of the deployment
+spec:
+  replicas: 1 # Number of replicas
+  selector:
+    matchLabels:
+      app: publisher # Label selector for the pod
+  template:
+    metadata:
+      labels:
+        app: publisher # Label for the pod
+    spec:
+      volumes:
+        - name: publisher-site-volume # Publisher HTML shared volume by publisher-site and publisher-job
+          emptyDir: {}
+        - name: publisher-logs-volume # Logs volume, used by 
+          emptyDir: {}
+        - name: drops                 # Where Resources are dropped by you, read by DocFxHelper
+          persistentVolumeClaim:      # Needs to be created ahead of time
+            claimName: drops-pvc
+        - name: workspace             # Internals to DocFxHelper
+          persistentVolumeClaim:      # Needs to be created ahead of time
+            claimName: workspace-pvc
+        - name: site                  # Generated DocFx Site files, Written by DocFxHelper, read by site
+          persistentVolumeClaim:      # Needs to be created ahead of time
+            claimName: site-pvc
+      containers:
+        - name: publisher-site # Main container
+          image: nginx:latest  # Use the nginx image
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: publisher-site-volume       # Publishing Status HTML - Written by DocFxHelper, read by publisher-site
+              mountPath: /usr/share/nginx/html  # 
+        - name: publisher-job     # Sidecar container
+          image: publisher:local  # docker image
+          resources:
+            requests:
+              memory: "1280Mi"
+              cpu: "500m"
+            limits:
+              memory: "2560Mi"
+              cpu: "750m"
+          volumeMounts:
+            - name: drops                       # Where resources are dropped, Written by you, read by DocFxHelper
+              mountPath: /docfxhelper/drops     
+            - name: workspace                   # Sandbox/working folder of DocFxHelper
+              mountPath: /docfxhelper/workspace
+            - name: site                        # Generated DocFx Site - Written by DocFxHelper
+              mountPath: /docfxhelper/site
+            - name: publisher-site-volume
+              mountPath: /docfxhelper/publishersite      # Generated logs and all - Written by DocFxHelper, read by none (yet, maybe publisher-site one day)
+            - name: publisher-logs-volume       # Publishing Status HTML - Written by DocFxHelper, read by publisher-site
+              mountPath: /docfxhelper/publisherlogs

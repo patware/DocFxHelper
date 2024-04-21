@@ -1,0 +1,19 @@
+# kubectl apply -f drops-pv.yaml
+# kubectl delete -f drops-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  labels:
+    io.kompose.service: drops-pv
+    type: local
+  name: drops-pv
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: hostpath
+  hostPath:
+    path: /run/desktop/mnt/host/c/dev/docfxhelper/Drops

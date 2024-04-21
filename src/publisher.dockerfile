@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
-# build: docker build -f publisher.dockerfile -t publisher:latest .
-# run: docker run --volume d:\rnd\docker\docfxHelper\virtualVolume:/docfxhelper publisher:latest
+# build: docker build -f publisher.dockerfile -t publisher:local .
+# run: 
+#  3 distinct volume mounts
+#    docker run --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site publisher:local
+#  1 volume mount with the drops, workspace and site subfolders (FYI case is important)
+#    docker run --volume docfxhelper:/docfxhelper publisher:local
 FROM mcr.microsoft.com/dotnet/sdk:8.0
 
 LABEL version="0.0.2"

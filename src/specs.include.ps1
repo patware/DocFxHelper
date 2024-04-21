@@ -24,7 +24,8 @@ $script:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
 Write-Host "specs.include.ps1 Version [$($SpecsIncludeVersion.Version)] $($SpecsIncludeVersion.title)"
 
 #region DocSpec classes
-enum DocSpecType {
+enum DocSpecType
+{
   Main = 1
   AdoWiki = 2
   DotnetApi = 3
@@ -34,25 +35,28 @@ enum DocSpecType {
   Template = 7
 }
 
-class DocSpecTemplate {
+class DocSpecTemplate
+{
   [DocSpec]$Spec
   [string]$Name
   [string]$Template
   [string]$Dest
 }
 
-class DocSpec {
+class DocSpec
+{
   [DocSpecType]$Type
   [System.IO.DirectoryInfo]$Path
   [DocSpecTemplate[]]$Templates
 }
 
 
-class DocSpecResource : DocSpec {
+class DocSpecResource : DocSpec
+{
   [string]$Id
   [string]$Name
   [string]$ParentId
-  [string]$Target
+  [string]$Target = "/"
   [bool]$IsRoot
   [Uri]$CloneUrl
   [string]$MenuParentItemName
@@ -66,8 +70,10 @@ class DocSpecResource : DocSpec {
   [string[]]$Medias = @()
 
   hidden [string]$_virtualPath
-  [string]VirtualPath() {
-    if ($null -eq $this._virtualPath) {
+  [string]VirtualPath()
+  {
+    if ($null -eq $this._virtualPath)
+    {
       Write-Debug "Calculating Virtual Path Fixed"
       $baseUri = [Uri]::new("http://home.local")
       $this._virtualPath = [Uri]::new($baseUri, (("/$($this.Target)/" -split "/" | where-object { $_ })) -join "/").AbsolutePath
@@ -78,22 +84,27 @@ class DocSpecResource : DocSpec {
 
   SetDefaults()
   {
-    if ([string]::IsNullOrEmpty($this.Name)) {
+    if ([string]::IsNullOrEmpty($this.Name))
+    {
       $this.Name = $this.Id
 
-      if (![string]::IsNullOrEmpty($this.MenuDisplayName)) {
+      if (![string]::IsNullOrEmpty($this.MenuDisplayName))
+      {
         $this.Name = $this.MenuDisplayName
       }
     }
   }
 }
 
-class DocSpecMain : DocSpec {
+class DocSpecMain : DocSpec
+{
   [System.IO.FileInfo]$DocFx_Json
   [bool]$UseModernTemplate
 
-  LoadFromDocFxJson() {
-    if ($this.DocFx_Json) {
+  LoadFromDocFxJson()
+  {
+    if ($this.DocFx_Json)
+    {
       $docfx = Get-Content (Join-Path $this.Path -ChildPath $this.DocFx_Json) | ConvertFrom-Json
 
       $this.UseModernTemplate = $docfx.build.template -contains "modern"
@@ -101,11 +112,13 @@ class DocSpecMain : DocSpec {
   }
 
 }
-class DocSpecAdoWiki : DocSpecResource {
+class DocSpecAdoWiki : DocSpecResource
+{
   [Uri]$WikiUrl
 }
 
-class DocSpecPowershellModule : DocSpecResource {
+class DocSpecPowershellModule : DocSpecResource
+{
   [string]$Psd1
 
   SetDefaults()
@@ -131,7 +144,8 @@ class DocSpecPowershellModule : DocSpecResource {
   }
 }
 
-class DocSpecs {
+class DocSpecs
+{
   [DocSpecMain]$Main
   [System.Collections.Generic.Dictionary[string, DocSpecResource]]$All
   [System.Collections.Generic.Dictionary[string, DocSpecResource[]]]$Hierarchy
@@ -139,7 +153,8 @@ class DocSpecs {
   [System.Collections.Generic.Dictionary[string, DocSpecResource[]]]$Children
   [System.Collections.Generic.List[DocSpecTemplate]]$Templates
 
-  DocSpecs() {
+  DocSpecs()
+  {
     $this.All = [System.Collections.Generic.Dictionary[string, DocSpecResource]]::new()
     $this.Hierarchy = [System.Collections.Generic.Dictionary[string, DocSpecResource[]]]::new()
     $this.Ordered = [System.Collections.Generic.List[DocSpecResource]]::new()
@@ -147,24 +162,30 @@ class DocSpecs {
     $this.Templates = [System.Collections.Generic.List[DocSpecTemplate]]::new()
   }
 
-  [DocSpec] Add([System.IO.FileInfo]$path) {
+  [DocSpec] Add([System.IO.FileInfo]$path)
+  {
     $spec = Get-Content $path | ConvertFrom-Json
     $docSpec = $null
 
-    if ([DocSpecType]$spec.Type -eq [DocSpecType]::Main) {
+    if ([DocSpecType]$spec.Type -eq [DocSpecType]::Main)
+    {
       $docSpec = [DocSpecMain]$spec
       $docSpec.Path = $path.Directory
       $docSpec.LoadFromDocFxJson()
       $this.Main = $docSpec
     }
-    else {
-      if ([DocSpecType]$spec.Type -eq [DocSpecType]::AdoWiki) {
+    else
+    {
+      if ([DocSpecType]$spec.Type -eq [DocSpecType]::AdoWiki)
+      {
         $docSpec = [DocSpecAdoWiki]$spec
       }
-      elseif ([DocSpecType]$spec.Type -eq [DocSpecType]::PowerShellModule) {
+      elseif ([DocSpecType]$spec.Type -eq [DocSpecType]::PowerShellModule)
+      {
         $docSpec = [DocSpecPowershellModule]$spec
       }
-      else {
+      else
+      {
         $docSpec = [DocSpecResource]$spec
       }
 
@@ -178,12 +199,15 @@ class DocSpecs {
 
     return $docSpec
   }
-  [DocSpec] Add([DocSpec]$spec) {
-    if ($spec -is [DocSpecResource]) {
+  [DocSpec] Add([DocSpec]$spec)
+  {
+    if ($spec -is [DocSpecResource])
+    {
       [void]$this.All.Add($spec.Id, $spec)
     }
 
-    foreach ($t in $Spec.Templates) {
+    foreach ($t in $Spec.Templates)
+    {
       $t.Spec = $Spec
 
       [void]$this.Templates.Add($t)
@@ -192,9 +216,11 @@ class DocSpecs {
     return $spec
   }
 
-  BuildHierarchy() {
+  BuildHierarchy()
+  {
     
-    if ($this.All.Values.Count -eq 0) {
+    if ($this.All.Values.Count -eq 0)
+    {
       Write-Debug "Nothing to sort, no resource."
       return 
     }
@@ -202,7 +228,8 @@ class DocSpecs {
     Write-Debug "Sorting the list of resources topologically based on Id and ParentId"
     $sorted = Get-ListSortedTopologically -IdName "Id" -ParentIdPropertyName "ParentId" -Data $this.All.Values
         
-    foreach ($spec in $sorted) {
+    foreach ($spec in $sorted)
+    {
       [void]$this.Ordered.Add($spec)
       [void]$this.Children.Add($spec.Id, ($sorted | where-object { $_.ParentId -eq $spec.Id }))
       [void]$this.Hierarchy.Add($spec.Id, ($sorted | where-object { $_.Id -ne $spec.Id -and $_.VirtualPath() -like "$($spec.VirtualPath())*" }))
@@ -221,7 +248,8 @@ class DocSpecs {
     and return the list of items sorted Top-First
 
 #>
-function Get-ListSortedTopologically {
+function Get-ListSortedTopologically
+{
   [cmdletBinding()]
   param(
     [Parameter(Mandatory, Position = 0)][Object[]]$Data,
@@ -229,7 +257,8 @@ function Get-ListSortedTopologically {
     [Parameter(Position = 2)][string]$ParentIdPropertyName = "ParentId"
   )
 
-  process {
+  process
+  {
     $res = [System.Collections.ArrayList]::new()
 
     $todo = $Data
@@ -244,15 +273,18 @@ function Get-ListSortedTopologically {
 
     $foobarIds = $todo | where-object { $null -ne $_."$parentIdPropertyName" -and $_."$parentIdPropertyName" -notin $todo."$idName" }
 
-    if ($foobarIds) {
+    if ($foobarIds)
+    {
       Write-Debug "Adding [Filter] Items with a non-existent parent"
       [void]$whereScriptBlocks.Add({ $_."$idName" -in $foobarIds })
     }
 
     $counter = 0
 
-    do {
-      while ($todo.Count -gt 0 -and $whereScriptBlocks.count -gt 0) {
+    do
+    {
+      while ($todo.Count -gt 0 -and $whereScriptBlocks.count -gt 0)
+      {
         $counter++
         Write-Verbose "Round #$($counter)"
         $whereScriptBlock = $whereScriptBlocks[0]
@@ -262,9 +294,12 @@ function Get-ListSortedTopologically {
 
         $thisBatch = $todo  | where-object $whereScriptBlock
 
-        if ($thisBatch.Count -gt 0) {
-          foreach ($item in $thisBatch) {
-            if ($DebugPreference -eq 'Continue') {
+        if ($thisBatch.Count -gt 0)
+        {
+          foreach ($item in $thisBatch)
+          {
+            if ($DebugPreference -eq 'Continue')
+            {
               Write-Debug ($item | convertto-json)
             }
             [void]$res.Add([PSCustomObject]$item)
@@ -295,7 +330,8 @@ function Get-ListSortedTopologically {
     .SYNOPSIS
     Builds a specs object from every specs.docs.json in the drops folder
 #>
-function ConvertFrom-Specs {
+function ConvertFrom-Specs
+{
   [OutputType([DocSpecs])]
   [CmdletBinding()]
   param(
@@ -303,21 +339,27 @@ function ConvertFrom-Specs {
     [parameter(ValueFromPipeline)][object[]]$InputObject
   )
 
-  begin {
+  begin
+  {
     $private:ret = [DocSpecs]::new()
   }
-  process {
-    foreach ($item in $InputObject) {
-      if (Test-Path $item) {
+  process
+  {
+    foreach ($item in $InputObject)
+    {
+      if (Test-Path $item)
+      {
         [void]$ret.Add($item)
       }
     }
 
-    if ($Path) {
+    if ($Path)
+    {
       [void]$ret.Add($Path)
     }
   }
-  end {
+  end
+  {
     $ret.BuildHierarchy()
     return $ret
   }
@@ -325,12 +367,13 @@ function ConvertFrom-Specs {
 }
 
 
-function Get-FolderHash {
+function Get-FolderHash
+{
   param([System.IO.DirectoryInfo]$Path)
 
   $tmp = New-TemporaryFile
 
-  Get-ChildItem -Path $Path  -Recurse | Get-FileHash -ErrorAction SilentlyContinue | set-content $tmp
+  Get-ChildItem -Path $Path  -Recurse -Force | Get-FileHash -ErrorAction SilentlyContinue | set-content $tmp
 
   $ret = Get-FileHash -Path $tmp
 
@@ -339,7 +382,8 @@ function Get-FolderHash {
   return $ret.Hash
 }
 
-enum State {
+enum State
+{
   Same = 0
   New = 1
   Different = 2
@@ -353,14 +397,16 @@ enum State {
     .DESCRIPTION
     Compares the specs from the drops folders and those from the DocfxHelper/sources
 #>
-function Get-DocResourcesChanges {
+function Get-DocResourcesChanges
+{
   param([Parameter(Mandatory)][DocSpecs]$Specs, [Parameter(Mandatory)]$SourcesPath)
 
   $ret = @()
     
   $verifiedSourcesNames = @()
 
-  foreach ($spec in $Specs.Ordered) {
+  foreach ($spec in $Specs.Ordered)
+  {
     <#
             $spec = $Specs.Ordered | select-object -first 1
             $spec
@@ -375,23 +421,28 @@ function Get-DocResourcesChanges {
       State      = [State]::Same
     }
 
-    if (Test-Path $sourcePath) {
+    if (Test-Path $sourcePath)
+    {
       $verifiedSourcesNames += $spec.Path.Name
       $item.SourceHash = Get-FolderHash -Path $sourcePath
 
-      if ($item.SourceHash -ne $item.SpecHash) {
+      if ($item.SourceHash -ne $item.SpecHash)
+      {
         $item.State = [State]::Different
       }
     }
-    else {
+    else
+    {
       $item.State = [State]::new
     }
 
     $ret += $item
   }
 
-  if (Test-Path $sourcesPath) {
-    foreach ($deletedSource in Get-ChildItem -Path $sourcesPath -Directory | where-object { $_.Name -ne $verifiedSourcesNames }) {
+  if (Test-Path $sourcesPath)
+  {
+    foreach ($deletedSource in Get-ChildItem -Path $sourcesPath -Directory -Force | where-object { $_.Name -ne $verifiedSourcesNames })
+    {
       $ret += [ordered]@{
         Id         = $null
         Name       = $null
@@ -407,18 +458,22 @@ function Get-DocResourcesChanges {
   return $ret
 }
 
-function Get-SpecIdsToUpdate {
+function Get-SpecIdsToUpdate
+{
   param([DocSpecs]$Specs, $changeList)
   $ret = @()
 
-  foreach ($specToProcess in $changeList | where-object { $_.State -in ([State]::new, [State]::Different) } ) {
+  foreach ($specToProcess in $changeList | where-object { $_.State -in ([State]::new, [State]::Different) } )
+  {
     <#
             $specToProcess = $changeList | select-object -first 1
             $specToProcess
         #>
     $ret += $specToProcess.Id
-    foreach ($child in $specs.Hierarchy."$($specToProcess.Id)") {
-      if (!($ret.Contains($child.Id))) {
+    foreach ($child in $specs.Hierarchy."$($specToProcess.Id)")
+    {
+      if (!($ret.Contains($child.Id)))
+      {
         $ret += $child.Id
       }
     }
@@ -429,7 +484,8 @@ function Get-SpecIdsToUpdate {
 #endregion
 
 #region PowerShell Module Specific
-function Register-PowerShellModuleFakePSRepository {
+function Register-PowerShellModuleFakePSRepository
+{
   param(
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
     [Parameter(Mandatory)][string]$ModuleName
@@ -439,7 +495,8 @@ function Register-PowerShellModuleFakePSRepository {
 }
 
 
-function Get-PowerShellModuleExportedFunction {
+function Get-PowerShellModuleExportedFunction
+{
   param([parameter(Mandatory)]$ModuleDetails)
 
   return (Get-Command -Module $ModuleDetails.Name) | select-object `
@@ -450,7 +507,8 @@ function Get-PowerShellModuleExportedFunction {
 
 }
 
-function Get-PowerShellModuleItemUri {
+function Get-PowerShellModuleItemUri
+{
   param(
     [Parameter(Mandatory)][Uri]$CloneUrl,
     [Parameter(Mandatory)][string]$ItemRelativePath,
@@ -463,7 +521,8 @@ function Get-PowerShellModuleItemUri {
   return $href.AbsoluteUri
 }
 
-function ConvertTo-PowerShellModuleFunctionHelp {
+function ConvertTo-PowerShellModuleFunctionHelp
+{
   [CmdletBinding()]
   param(
     [Parameter(ValueFromPipelineByPropertyName)][string]$Name,
@@ -476,9 +535,11 @@ function ConvertTo-PowerShellModuleFunctionHelp {
     [string]$ModuleRelativePath
   )
 
-  begin {
+  begin
+  {
   }
-  process {
+  process
+  {
         
     Write-Debug "----------------------------------"
     Write-Debug "              Name: [$($Name)]"
@@ -489,14 +550,16 @@ function ConvertTo-PowerShellModuleFunctionHelp {
     Write-Debug "            Target: [$($Target)]"
     Write-Debug "ModuleRelativePath: [$($ModuleRelativePath)]"
 
-    if (!(Test-Path $Target)) {
+    if (!(Test-Path $Target))
+    {
       New-Item $Target -ItemType Directory | Out-Null
     }
 
     Write-Debug "[PlatyPs] New-MarkdownHelp -Command $name"
     $generated = New-MarkdownHelp -Command $name -OutputFolder $Target -Verbose -Force
 
-    if ([string]::IsNullOrEmpty($ModuleRelativePath)) {
+    if ([string]::IsNullOrEmpty($ModuleRelativePath))
+    {
       Write-Information "-ModuleRelativePath not provided, defaulting to src/{moduleName}"
       $ModuleRelativePath = "src/$Name"
     }
@@ -519,7 +582,8 @@ function ConvertTo-PowerShellModuleFunctionHelp {
   end {}
 }
 
-function Get-PowerShellModuleViewModel {
+function Get-PowerShellModuleViewModel
+{
   param($moduleDetails, $ModuleRelativePath, $CloneUrl, $RepoBranch = "main")
 
   Write-Debug "Get-PowerShellModuleViewModel"
@@ -553,7 +617,8 @@ function Get-PowerShellModuleViewModel {
   return [PSCustomObject]$ret
 }
 
-function New-PowerShellModuleIndex {
+function New-PowerShellModuleIndex
+{
   param($Target, $viewModel)
 
   $index_md_mustache = (join-path $PSScriptRoot -ChildPath "PowerShellModules.index.md.mustache")
@@ -566,7 +631,8 @@ function New-PowerShellModuleIndex {
 
 }
 
-function New-PowerShellModuleToc {
+function New-PowerShellModuleToc
+{
   param($Target, $viewModel)
 
   $toc_yml_mustache = (join-path $PSScriptRoot -ChildPath "PowerShellModules.toc.yml.mustache")
@@ -583,7 +649,8 @@ function New-PowerShellModuleToc {
 
 #endregion
 
-function Convert-DocResource {
+function Convert-DocResource
+{
   param(
     [Parameter(Mandatory)][DocSpec]$Spec,  
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
@@ -607,8 +674,10 @@ function Convert-DocResource {
   Write-Information "Pages UID Prefix [$($pagesUidPrefix)]"
    
 
-  switch ($spec.Type) {
-    AdoWiki {
+  switch ($spec.Type)
+  {
+    AdoWiki
+    {
 
       Write-Information "Ado Wiki Url [$($spec.WikiUrl)]"
 
@@ -631,7 +700,8 @@ function Convert-DocResource {
         @a
 
     }
-    DotnetApi {
+    DotnetApi
+    {
 
       Write-Information ".Net API"
 
@@ -651,7 +721,8 @@ function Convert-DocResource {
       $docfx_json = "./docfx.json"
       $docfx_metadata_log_json = "./docfx.metadata.log.json"
 
-      if (Test-Path $docfx_metadata_log_json) {
+      if (Test-Path $docfx_metadata_log_json)
+      {
         remove-item $docfx_metadata_log_json
       }
 
@@ -659,7 +730,8 @@ function Convert-DocResource {
 
       & docfx metadata --log $docfx_metadata_log_json --logLevel verbose
 
-      if (Test-Path $docfx_metadata_log_json) {
+      if (Test-Path $docfx_metadata_log_json)
+      {
         $docfx_metadata_log = get-content $docfx_metadata_log_json | convertfrom-json
 
         Write-Information "docfx metadata logs:"
@@ -669,12 +741,14 @@ function Convert-DocResource {
         remove-item $docfx_metadata_log_json
       }
 
-      if (Test-Path $docfx_json) {
+      if (Test-Path $docfx_json)
+      {
         remove-item $docfx_json
       }
 
     }
-    RestApi {
+    RestApi
+    {
 
       Write-Information "REST API - will use swagger.json at docfx build"
             
@@ -683,7 +757,8 @@ function Convert-DocResource {
       Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose
 
     }
-    PowerShellModule {
+    PowerShellModule
+    {
       Write-Information "PowerShell Module"
 
       #Register-PowerShellModuleFakePSRepository -Path $Path -ModuleName $spec.Name
@@ -714,7 +789,8 @@ function Convert-DocResource {
             
 
     }
-    Conceptual {
+    Conceptual
+    {
       Write-Information "Conceptual - just copy to converted"
             
       Write-Debug "Copy-Robo $Path $Destination"
@@ -733,14 +809,16 @@ function Convert-DocResource {
         -PagesUidPrefix $pagesUidPrefix `
         @a
     }
-    Template {
+    Template
+    {
 
     }
   }
 
   Write-Information "$($spec.Id) Converted"
 }
-function Add-DocResource {
+function Add-DocResource
+{
   param(
     [Parameter(Mandatory)][DocSpec]$Spec,  
     [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path, 
@@ -753,13 +831,18 @@ function Add-DocResource {
         $Destination 
     #>
 
-  if (Test-Path $Path) {
+  Write-Information "Adding $($spec.Id)"
+
+  if (Test-Path $Path)
+  {
     #& robocopy $Path $destination /MIR
     Copy-Robo -Source $Path -Destination $Destination -Mirror
   }
 
-  switch ($spec.Type) {
-    AdoWiki {
+  switch ($spec.Type)
+  {
+    AdoWiki
+    {
       Add-AdoWiki `
         -Path $destination `
         -Id $spec.Id `
@@ -776,7 +859,8 @@ function Add-DocResource {
         -Medias $spec.Medias `
         -ParentId $spec.ParentId
     }
-    DotnetApi {
+    DotnetApi
+    {
       Add-DotnetApi `
         -Path $destination `
         -Id $spec.Id `
@@ -789,7 +873,8 @@ function Add-DocResource {
         -Medias $spec.Medias `
         -ParentId $spec.ParentId
     }
-    RestApi {
+    RestApi
+    {
       Add-RestApi `
         -Path $destination `
         -Id $spec.Id `
@@ -802,7 +887,8 @@ function Add-DocResource {
         -Medias $spec.Medias `
         -ParentId $spec.ParentId
     }
-    PowerShellModule {
+    PowerShellModule
+    {
       Add-PowerShellModule `
         -Path $destination `
         -Id $spec.Id `
@@ -818,7 +904,8 @@ function Add-DocResource {
         -Medias $spec.Medias `
         -ParentId $spec.ParentId
     }
-    Conceptual {
+    Conceptual
+    {
       Add-Conceptual `
         -Path $destination `
         -Id $spec.Id `
@@ -836,4 +923,7 @@ function Add-DocResource {
     }
     Template {}   
   }
+
+  Write-Information "$($spec.Id) added."
+
 }

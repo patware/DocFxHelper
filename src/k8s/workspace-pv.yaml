@@ -1,0 +1,21 @@
+# kubectl apply -f workspace-pv.yaml
+# kubectl delete -f workspace-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  labels:
+    io.kompose.service: workspace-pv
+    type: local
+  name: workspace-pv
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: hostpath
+  hostPath:
+    path: /run/desktop/mnt/host/c/dev/docfxhelper/Workspace
+
+
