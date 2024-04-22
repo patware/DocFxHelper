@@ -277,8 +277,8 @@ function Copy-Robo
   {
     $cmd = "robocopy"    
     $a = @()
-    $a += $source
-    $a += $destination
+    $a += "$source"
+    $a += "$destination"
 
     if ($Mirror) { $a += "/MIR" }
     if ($ShowFullPath) { $a += "/FP" }
@@ -2171,42 +2171,50 @@ function script:AdoWiki_UpdateLinksToMdLinks
       display = $in.display
       link    = $in.link
     }
-    $testUri = [Uri]::new($baseUri, $out.link)
 
-    if ($testUri.Host -ne $baseUri.Host)
+    if ($out.link.StartsWith("#tab/"))
     {
-      Write-Debug "    ignored $($out.link) - is external"
+      Write-Debug "    link ($($out.link)) is a DocFx tab header, leaving as is"
     }
     else
     {
-      if ($testUri.Segments -contains ".attachments/")
+      $testUri = [Uri]::new($baseUri, $out.link)
+
+      if ($testUri.Host -ne $baseUri.Host)
       {
-        Write-Debug "    ignored $($out.link) - links to an image"
+        Write-Debug "    ignored ($($out.link)) - is external"
       }
       else
       {
-        if ($testUri.LocalPath.EndsWith(".md"))
+        if ($testUri.Segments -contains ".attachments/")
         {
-          Write-Debug "    ignored $($out.link) already points to a .md file"
-        }
-        elseif ($AllMdFiles -contains $testUri.AbsolutePath)
-        {
-          Write-Debug "    link $($out.link), found an .md file, appending .md"
-          $out.link = "$($testUri.AbsolutePath).md$($testUri.Query)$($testUri.Fragment)"
+          Write-Debug "    ignored ($($out.link)) - links to an image"
         }
         else
-        {          
-          $PageUri = [Uri]::new($baseUri, $MdFileMetadata.DocFxSafe.LinkAbsolute)
-          $pageRelativeLink = [Uri]::new($pageUri, $out.link)
-          
-          if ($AllMdFiles -contains $pageRelativeLink.AbsolutePath -or $AllMdFiles -contains "$($pageRelativeLink.AbsolutePath).md")
+        {
+          if ($testUri.LocalPath.EndsWith(".md"))
           {
-            Write-Debug "    link $($out.link) is relative to an existing .md, using [$($pageRelativeLink.AbsolutePath).md]"
-            $out.link = "$($pageRelativeLink.AbsolutePath).md$($pageRelativeLink.Query)$($pageRelativeLink.Fragment)"
+            Write-Debug "    ignored ($($out.link)) already points to a .md file"
+          }
+          elseif ($AllMdFiles -contains $testUri.AbsolutePath)
+          {
+            Write-Debug "    link ($($out.link)), found an .md file, appending .md"
+            $out.link = "$($testUri.AbsolutePath).md$($testUri.Query)$($testUri.Fragment)"
           }
           else
-          {
-            Write-Debug "    link $($out.link) doesn't seem to correspond to an existing .md file, leaving as is"
+          {          
+            $PageUri = [Uri]::new($baseUri, $MdFileMetadata.DocFxSafe.LinkAbsolute)
+            $pageRelativeLink = [Uri]::new($pageUri, $out.link)
+            
+            if ($AllMdFiles -contains $pageRelativeLink.AbsolutePath -or $AllMdFiles -contains "$($pageRelativeLink.AbsolutePath).md")
+            {
+              Write-Debug "    link ($($out.link)) is relative to an existing .md, using [$($pageRelativeLink.AbsolutePath).md]"
+              $out.link = "$($pageRelativeLink.AbsolutePath).md$($pageRelativeLink.Query)$($pageRelativeLink.Fragment)"
+            }
+            else
+            {
+              Write-Debug "    link ($($out.link)) doesn't seem to correspond to an existing .md file, leaving as is"
+            }
           }
         }
       }
@@ -2251,36 +2259,42 @@ function script:AdoWiki_UpdateRenamedLinks
       link    = $in.link
     }
 
-
-    $testUri = [Uri]::new($baseUri, $out.link)
-
-    if ($testUri.Host -ne $baseUri.Host)
+    if ($out.link.StartsWith("#tab/"))
     {
-      Write-Debug "ignored $($out.link) - is external"
+      Write-Debug "ignored $($out.link) - is DocFx Tab header"
     }
     else
     {
-      if ($testUri.Segments -contains ".attachments/")
+      $testUri = [Uri]::new($baseUri, $out.link)
+
+      if ($testUri.Host -ne $baseUri.Host)
       {
-        Write-Debug "ignored $($out.link) - links to an image"
-      }
-      elseif ($testUri.LocalPath -eq "/" -and "$($testUri.Anchor)" -ne "")
-      {
-        Write-Debug "ignored $($out.link) - links to anchor"
+        Write-Debug "ignored $($out.link) - is external"
       }
       else
       {
-        $matchedMap = $Map | where-object { $_.from.LinkAbsoluteMd -eq $testUri.AbsolutePath -or $_.from.LinkAbsoluteMd -eq "$($testUri.AbsolutePath).md" }
-        if ($matchedMap)
+        if ($testUri.Segments -contains ".attachments/")
         {
-          Write-Debug "Found a link to a renamed map item From: [$($matchedMap.from.LinkAbsoluteMd)] To: [$($matchedMap.to.LinkAbsoluteMd)].  Updating link"
-          $newUri = $matchedMap.to.LinkAbsoluteMd
-
-          $out.link = "$($newUri)$($testUri.Query)$($testUri.Fragment)"
+          Write-Debug "ignored $($out.link) - links to an image"
+        }
+        elseif ($testUri.LocalPath -eq "/" -and "$($testUri.Anchor)" -ne "")
+        {
+          Write-Debug "ignored $($out.link) - links to anchor"
         }
         else
         {
-          Write-Debug "Leaving $($out.link) as is"
+          $matchedMap = $Map | where-object { $_.from.LinkAbsoluteMd -eq $testUri.AbsolutePath -or $_.from.LinkAbsoluteMd -eq "$($testUri.AbsolutePath).md" }
+          if ($matchedMap)
+          {
+            Write-Debug "Found a link to a renamed map item From: [$($matchedMap.from.LinkAbsoluteMd)] To: [$($matchedMap.to.LinkAbsoluteMd)].  Updating link"
+            $newUri = $matchedMap.to.LinkAbsoluteMd
+
+            $out.link = "$($newUri)$($testUri.Query)$($testUri.Fragment)"
+          }
+          else
+          {
+            Write-Debug "Leaving $($out.link) as is"
+          }
         }
       }
     }
@@ -2321,6 +2335,7 @@ function script:AdoWiki_UpdateLinksToAbsoluteLinks
       $in.link = "#Anchor"
       $in.link = "/With%20Space/With%20Space%20Too.md?q1=v1&q2=v2#FragmentName"
       $in.link = "/With Space/With Space Too.md?q1=v1&q2=v2#FragmentName"
+      $in.link = "#tab/foo" --> special link anchor syntax to DocFx Tabs
       $in.display = Read-Host "Display"
       $in.link = Read-Host "Link"
     #>
@@ -2331,17 +2346,24 @@ function script:AdoWiki_UpdateLinksToAbsoluteLinks
 
     Write-Debug "[$($out.display)]($($out.link))"
 
-    $linkUri = [Uri]::new($PageUri, $out.link)
-    if ($linkUri.AbsoluteUri -ne $out.link)
+    if ($out.link.startsWith("#tab/"))
     {
-      $out.link = "$($linkUri.PathAndQuery)$($linkUri.Fragment)"
-      Write-Debug "Converting to absolute: [$($out.link)]"
+      Write-Debug "DocFx Tab Header link #tab/foo - leaving it as is"
     }
     else
     {
-      Write-Debug "Leaving link [$($out.link)] as is"
+      $linkUri = [Uri]::new($PageUri, $out.link)
+      if ($linkUri.AbsoluteUri -ne $out.link)
+      {
+        $out.link = "$($linkUri.PathAndQuery)$($linkUri.Fragment)"
+        Write-Debug "Converting to absolute: [$($out.link)]"
+      }
+      else
+      {
+        Write-Debug "Leaving link [$($out.link)] as is"
+      }
     }
-    
+
     $ret = "$($in.include)[$($out.display)]($($out.link))"
     return $ret
 
@@ -2380,6 +2402,7 @@ function script:AdoWiki_UpdateLinksToRelativeLinks
       $in.link = "#Anchor"
       $in.link = "/With%20Space/With%20Space%20Too.md?q1=v1&q2=v2#FragmentName"
       $in.link = "/With Space/With Space Too.md?q1=v1&q2=v2#FragmentName"
+      $in.link = "#tab/foo" --> special link anchor syntax to DocFx Tabs
       $in.display = Read-Host "Display"
       $in.link = Read-Host "Link"
     #>
