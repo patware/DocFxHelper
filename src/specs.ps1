@@ -104,12 +104,14 @@ do
     Write-Host "Sample Main"
     $source = Join-Path $PSScriptRoot -ChildPath "Samples" -AdditionalChildPath "SampleMain"
     $destination = Join-Path $DropsPath -ChildPath "SampleMain"
-    & robocopy $source $destination /E
+    #& robocopy $source $destination /E
+    Copy-Robo -Source $source -Destination $destination -ShowFullPath -ShowVerbose
 
     Write-Host "DocFxHelper Template"
     $source = Join-Path $PSScriptRoot -ChildPath "DocFxTemplate" -AdditionalChildPath "DocFxHelper"
     $destination = Join-Path $DropsPath -ChildPath "SampleMain" -AdditionalChildPath "Templates", "DocFxHelper"
-    & robocopy $source $destination /E
+    #& robocopy $source $destination /E
+    Copy-Robo -Source $source -Destination $destination -ShowFullPath -ShowVerbose
 
     Write-Host "Sample Site"
     $source = Join-Path $PSScriptRoot -ChildPath "Samples" -AdditionalChildPath "SampleSite"
