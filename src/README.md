@@ -98,6 +98,13 @@ docker build -f publisher.dockerfile -t publisher:local .
 docker build -f site.dockerfile -t site:local .
 ```
 
+Build the docker images, with the step output
+
+```bash
+docker build -f publisher.dockerfile -t publisher:local --progress=plain .
+docker build -f site.dockerfile -t site:local --progress=plain .
+```
+
 Run the docker containers
 
 ```bash
@@ -111,6 +118,7 @@ Now, browse to [http://localhost:8083/](http://localhost:8083/)
 
 ### Kubernetes
 
+Local kubernetes, see [k8s.local](./k8s.local/README.md) README.
 
 ## Setup
 

@@ -1,12 +1,13 @@
-# kubectl apply -f drops-pv.yaml
-# kubectl delete -f drops-pv.yaml
+# kubectl apply -f workspace-pv.yaml
+# kubectl delete -f workspace-pv.yaml
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   labels:
-    io.kompose.service: drops-pv
+    app: docfxhelper
+    tier: publisher
     type: local
-  name: drops-pv
+  name: workspace-pv
 spec:
   capacity:
     storage: 5Gi
@@ -16,4 +17,4 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: hostpath
   hostPath:
-    path: /run/desktop/mnt/host/c/dev/docfxhelper/Drops
+    path: /run/desktop/mnt/host/c/dev/docfxhelper/Workspace

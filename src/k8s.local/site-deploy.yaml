@@ -4,19 +4,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: site
+    app: docfxhelper
+    tier: site
   name: site
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: site
+      app: docfxhelper
+      tier: site
   strategy:
     type: Recreate
   template:
     metadata:
       labels:
-        app: site
+        app: docfxhelper
+        tier: site
     spec:
       containers:
         - env:
@@ -42,4 +45,4 @@ spec:
       volumes:
         - name: site
           persistentVolumeClaim:
-            claimName: site-pvc
+            claimName: site-site-pvc
