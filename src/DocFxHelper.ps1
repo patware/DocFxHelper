@@ -28,6 +28,7 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.10.1"; title="Fix: Docfx.json ADOwiki attachments wrong dest"}
     [ordered]@{version=[Version]"0.3.10.2"; title="Fix: ADOWiki moved the _adoWikiUri"}
     [ordered]@{version=[Version]"0.3.10.3"; title="Multiple ADOWiki fixes stabilization phase"}
+    [ordered]@{version=[Version]"0.3.11"; title="Test-Different"}
 )
 
 $script:DocFxHelperVersion = $DocFxHelperVersions[-1]
@@ -312,10 +313,95 @@ function Copy-Robo
       Write-Error ($res | out-string)
     }
   }
+  Write-Host "Finished running $cmd $($a -join " "): result code [$LastExitCode]"
   $LastExitCode = 0
-  Write-Host "Finished running $cmd $($a -join " ")"
 
 }
+
+function Test-Different
+{
+  param(
+    [Parameter(Mandatory)]$source,
+    [Parameter(Mandatory)]$destination
+  )
+
+  $cmd = $null
+  $a = @()
+
+  $destinationParentFolder = (Split-Path $destination)
+  if (Test-Path $destinationParentFolder)
+  {
+    Write-Debug "Parent folder $destinationParentFolder already exists"
+  }
+  else
+  {
+    Write-Debug "Parent folder $destinationParentFolder not found, creating"
+    New-Item $destinationParentFolder -ItemType Directory -Force
+  }
+  
+  Write-Debug "Platform: [$($PSVersionTable.Platform)]"
+
+  if ("$($PSVersionTable.Platform)" -eq "Unix")
+  {
+    $cmd = "diff"
+    # --exclude=PATTERN    
+    
+    $a += "--recursive"
+    
+    $sourceItem = Get-Item $source
+    if ($sourceItem.PSIsContainer)
+    {
+      if (!"$($source)".EndsWith("/"))
+      {
+        $source = "$($source)/"
+      }
+      if (!"$destination".EndsWith("/"))
+      {
+        $destination = "$($destination)/"
+      }
+    }
+    $a += $source
+    $a += $destination
+
+  }
+  else
+  {
+    $cmd = "robocopy"
+    $a = @("$source", "$destination", "/MIR", "/L", "/NS", "/NC", "/NFL", "/NDL", "/NP", "/NJH")
+  }
+
+  Write-Host "Running $cmd $($a -join " ")"
+
+  $res = & $cmd @a
+
+  $res = $null
+  if ($cmd -eq "robocopy")
+  {
+    if ($LASTEXITCODE -eq 0)
+    {
+      $res = $false
+    }elseif ($LASTEXITCODE -lt 8)
+    {
+      $res = $true
+    }
+
+  }elseif ($cmd -eq "diff")
+  {
+    if ($LastExitCode -eq 0)
+    {
+      $res = $false
+    }elseif ($LASTEXITCODE -eq 1)
+    {
+      $res = $true
+    }
+
+  }
+  Write-Host "Finished running $cmd $($a -join " "): Exit code $($LASTEXITCODE)"
+  Write-Host "Source different? $($res)"
+  $LastExitCode = 0
+  return $res
+}
+
 function script:Get-DocFxHelperResourcePageUidPrefix
 {
   param($Target)
@@ -882,8 +968,6 @@ function Add-DocFxHelperResource
   }
   
   ViewModel_setDocFxHelperResourceHierarchy -ResourceViewModel $resource
-  
-  # $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
 
 }
 
@@ -1029,7 +1113,17 @@ function script:ViewModel_setDocFxHelperResourceHierarchy
     Write-Verbose "Resource [$($ResourceViewModel.id)] is the root and doesn't need a parent toc.yml"
   }
 
-  $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
+  $docfxhelper_json=$null
+  if ($DocFxHelperFiles.docfxhelper_json)
+  {
+    $docfxhelper_json = $DocFxHelperFiles.docfxhelper_json
+  }
+  else
+  {
+    $docfxhelper_json = (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
+  }
+  
+  $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content $docfxhelper_json
 }
 
 function script:AddResource_ToParent
@@ -2762,7 +2856,17 @@ function New-DocFx
       $DocFxHelper | ConvertTo-Json -Depth 4 | Write-Debug
     }
 
-    $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path $Target -ChildPath "docfxhelper.json")
+    $docfxhelper_json=$null
+    if ($DocFxHelperFiles.docfxhelper_json)
+    {
+      $docfxhelper_json = $DocFxHelperFiles.docfxhelper_json
+    }
+    else
+    {
+      $docfxhelper_json = (join-path $Target -ChildPath "docfxhelper.json")
+    }
+    
+    $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content $docfxhelper_json
 
   }
 

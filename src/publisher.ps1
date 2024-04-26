@@ -62,7 +62,7 @@ else
   Write-Host "Created folder publisherlogs [$($PublisherLogsPath)]"
 }
 
-copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "starting.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "0.starting.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
 
 
 $specsFolders = @{
@@ -112,5 +112,3 @@ else
 {
   Write-Warning "Missing folder.  Exiting..."
 }
-
-copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "finished.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")

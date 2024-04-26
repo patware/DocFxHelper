@@ -45,21 +45,20 @@ $script:SpecsVersions = @(
   [ordered]@{version = [Version]"0.1.10.1"; title = "Copy-Robo renamed para -ShowVerbose" }
   [ordered]@{version = [Version]"0.1.11"; title = "If no specs found in Drops, use those from Samples" }
   [ordered]@{version = [Version]"0.1.12"; title = "Add Invoke-CommandWithRetry for failing commands" }
+  [ordered]@{version = [Version]"0.1.13"; title = "Loop until work to do" }
 )
 
 $script:SpecsVersion = $SpecsVersions[-1]
 Write-Host "specs.ps1 Version [$($SpecsVersion.Version)] $($SpecsVersion.title)"
 
-copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "specs.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
-
 $DocFxHelperFolders = [ordered]@{
-  sources   = (Join-Path $WorkspacePath -ChildPath "sources")
-  converted = (Join-Path $WorkspacePath -ChildPath "converted")
-  staging   = (Join-Path $WorkspacePath -ChildPath "staging")
+  sources       = (Join-Path $WorkspacePath -ChildPath "sources")
+  converted     = (Join-Path $WorkspacePath -ChildPath "converted")
+  staging       = (Join-Path $WorkspacePath -ChildPath "staging")
 }
 
 
-Write-Host "Checking out the [$($DocFxHelperFolders.Keys.Count)] Workspace folders"
+Write-Host "Verifying the [$($DocFxHelperFolders.Keys.Count)] Workspace folders"
 foreach ($key in $DocFxHelperFolders.Keys) {
   <#
         $key = $DocFxHelperFolders.Keys | select-object -first 1
@@ -77,8 +76,8 @@ foreach ($key in $DocFxHelperFolders.Keys) {
 
 $DocFxHelperFiles = @{
   docfx_json          = (join-Path $DocFxHelperFolders.staging -ChildPath "docfx.json")
-  docfxhelper_json    = (join-Path $DocFxHelperFolders.staging -ChildPath "docfxhelper.json")
-  docfx_build_vm_json = (Join-Path $DocFxHelperFolders.staging -ChildPath "docfx.build.json")
+  docfxhelper_json    = (join-Path $PublisherLogsPath -ChildPath "docfxhelper.json")
+  docfx_build_vm_json = (Join-Path $PublisherLogsPath -ChildPath "docfx.build.json")
 }
 
 Write-Host "DocFx files:"
@@ -86,9 +85,74 @@ Write-Host "  - docfx.json: [$($DocFxHelperFiles.docfx_json)]"
 Write-Host "  - docfxhelper_json: [$($DocFxHelperFiles.docfxhelper_json)] (docfx helper viewModel used in templates)"
 Write-Host "  - docfx_build_vm_json: [$($DocFxHelperFiles.docfx_build_vm_json)] (docfx build viewModel used in templates)"
 
-# ------------------------------------------------------------------------
 
-Write-Host "Fetching Doc Specs from the Drops folders"
+# ------------------------------------------------------------------------
+if (Get-ChildItem -Path $DropsPath)
+{
+  $diffCounter=0
+  $compare_json = join-Path $PublisherLogsPath -childPath "Compare.json"
+  $comparePrevious_json = join-Path $PublisherLogsPath -childPath "Compare.Previous.json"
+  
+  copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "1.checkworktodo.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
+  do
+  {
+    $diffCounter++
+    Write-Host "Checking what needs to be done"
+  
+    if (Test-Path $compare_json)
+    {
+      Move-Item $compare_json -Destination $comparePrevious_json -Force
+    }
+    
+    $source = $DropsPath
+    $destination = $DocFxHelperFolders.sources
+
+    $startedAt = (Get-Date)
+  
+    $compare = [ordered]@{
+      Source = $source
+      Destination = $destination
+      Counter = $diffCounter
+      StartedAt = "$($startedAt.ToUniversalTime())"
+      FinishedAt = $null
+      TotalSeconds = $null
+      HasDifferences = $null
+    }
+  
+    $compare | ConvertTo-Json | Set-Content $compare_json
+  
+    $hasDifferences = Test-Different -source $source -destination $destination
+  
+    $finishedAt = Get-Date
+    $compare.FinishedAt = "$($finishedAt.ToUniversalTime())"
+    $compare.TotalSeconds = [int]($finishedAt - $startedAt).TotalSeconds
+    $compare.HasDifferences = $hasDifferences
+  
+    $compare | ConvertTo-Json | Set-Content $compare_json
+  
+    if ($hasDifferences)
+    {
+      Write-Host "Drops and Workspace Sources are different, there's work to do."
+      if ($diffCounter -gt 1)
+      {
+        Write-Host "Better safe than sorry, let's give them a 15 seconds to finish copying files"
+        start-sleep -Seconds 15
+      }
+    }
+    else
+    {
+      Write-Host "Drops and Workspace Sources match, nothing to do, sleeping for 5 seconds, before checking again"
+      Start-Sleep -Seconds 5
+    }
+  }until($hasDifferences)
+}
+
+
+# ------------------------------------------------------------------------
+copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "2.specs.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
+Write-Host "Fetching Doc Specs"
 Write-Host "Searching for specs.docs.json"
 
 $retry = 0
@@ -116,7 +180,7 @@ do
     Write-Host "Sample Site"
     $source = Join-Path $PSScriptRoot -ChildPath "Samples" -AdditionalChildPath "SampleSite"
     $destination = Join-Path $DropsPath -ChildPath "SampleSite"
-    & robocopy $source $destination /E
+    Copy-Robo -Source $source -Destination $destination -ShowFullPath -ShowVerbose
 
   }
 }while($specs_docs_json_list.Count -eq 0 -and $retry -lt 2)
@@ -134,40 +198,17 @@ else {
   }
   else {
     # ------------------------------------------------------------------------
-    Write-Host "Copy Doc Resources to DocFxHelper Folder Sources"
-        
-    if ($specs.Main) {
-      Write-Host "Copying Main spec from [Drops] to [Workspace.Sources]"
+    Write-Host "Copy Specs to DocFxHelper's Workspace/Sources"
 
-      $source = $specs.Main.Path
-      $destination = (Join-Path $DocFxHelperFolders.sources -ChildPath $specs.Main.Path.Name)
+    $source = $DropsPath
+    $destination = $DocFxHelperFolders.sources
 
-      #& robocopy $source $destination  /MIR /FP /V
-      Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
-    }
-
-    $counter = 0
-    foreach ($spec in $specs.Ordered) {
-      <#
-          $spec = $specs.Ordered | select-object -first 1
-          $spec = $specs.Ordered | select-object -first 1 -skip 1
-          $spec
-      #>
-      $counter++
-      Write-Host "Copying $($spec.Id) [$($counter)/$($specs.Ordered.Count)] from [Drops] to [Workspace.Sources]"
-
-      $source = $spec.Path
-      $destination = (Join-Path $DocFxHelperFolders.sources -ChildPath $spec.Path.Name)
-
-      Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
-      #& robocopy $source $destination  /MIR /FP /V
-
-    }
+    Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
 
     # ------------------------------------------------------------------------
     Write-Host "Converting Doc Resources (ConvertTo-DocFx*)"
 
-    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "conversion.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "3.conversion.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
 
     Write-Host "Converting Main"
     Write-Host "  - Copy from [Workspace.Sources] to [Workspace.Converted]"
@@ -207,7 +248,7 @@ else {
     # ------------------------------------------------------------------------
     Write-Host "Generating DocFx.json for resources"
 
-    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "assembly.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "4.assembly.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
 
     if ($specs.Main.DocFx_Json) {
       Write-Host "  - New [Workspace.Staging]/Docfx.json from Main Spec's $($specs.Main.DocFx_Json.Name)"
@@ -278,7 +319,7 @@ else {
     # ------------------------------------------------------------------------
     Write-Host "DryRun Building DocFx"
 
-    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "dryrun.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "5.dryrun.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
 
     push-location $DocFxHelperFolders.staging
     if (test-path "docfx.build.log") { remove-item "docfx.build.log" }
@@ -310,7 +351,7 @@ else {
     # ------------------------------------------------------------------------
     Write-Host "Building DocFx from [$($DocFxHelperFolders.staging)]"
 
-    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "build.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "6.build.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
 
     push-location $DocFxHelperFolders.staging
     if (test-path "docfx.build.log") { remove-item "docfx.build.log" }
@@ -321,7 +362,7 @@ else {
     $source = (get-item _site).FullName
     $destination = $SitePath.FullName
 
-    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "publish.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+    copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "7.publish.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
     Write-Host "Site generated.  Copying to final destination"
     Write-Host "         site: $($source)"
     Write-Host "  destination: $($destination)"
@@ -329,4 +370,7 @@ else {
     Copy-Robo -Source $source -Destination $destination -Mirror -ShowFullPath -ShowVerbose
     Pop-Location
   }
+
+  copy-item (join-path $PSScriptRoot -childPath "static" -AdditionalChildPath "8.finished.html") -Destination (join-path $PublisherSitePath -ChildPath "index.html")
+
 }
