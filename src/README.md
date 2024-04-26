@@ -6,14 +6,14 @@ The resource types are: Ado Wiki, dotnet class library, REST api, PowerShell mod
 
 Each resource type requires a json specification file (specs.docs.json) that contains the instructions DocFxHelper needs to convert the resources into a format and structure that DocFx requires, and to build the proper hierarchy (parent-child relationship).
 
-| Type | Name | Resource files |
-| --- | --- | --- |
-| Main | Start/Initializer | Docfx files like docfx.json and templates |
-| AdoWiki | Azure DevOps Wiki files | the git repo of the ADO Wiki |
-| DotnetApi | .net class library | compiled (.dll) with SourceLink |
-| RestApi | Swagger doc |  [untested] |
-| PowershellModule | PowerShell Module | Source code (psm1, psd1, ps1) |
-| Conceptual | Classic Docfx conceptual site | All files, the docfx.json is ignored |
+| Type             | Name                          | Resource files                                           |
+|------------------|-------------------------------|----------------------------------------------------------|
+| Main             | Start/Initializer             | Docfx files like docfx.json and templates                |
+| AdoWiki          | Azure DevOps Wiki files       | ADO Wiki files                                           |
+| DotnetApi        | .net class library            | compiled (.dll) with SourceLink                          |
+| RestApi          | Swagger doc                   | [untested]                                               |
+| PowershellModule | PowerShell Module             | Source code (psm1, psd1, ps1)                            |
+| Conceptual       | Classic Docfx conceptual site | All md, yaml, and media files, the docfx.json is ignored |
 
 ## Specs.docs.json
 
@@ -43,15 +43,17 @@ Here's a table of mapping properties and resource type:
 | WikiUrl            | URI        |                         | No       | Required | No        | No       | No               | No         |
 | Psd1               | string     | {Name}.[psd1]           | No       | No       | No        | No       | Optional         | No         |
 
-## Using DocFxHelper
+## Setup DocFxHelper
 
 DocFxHelper script works with 3 folders:
 
-| Name | Usage |
-| --- | --- |
-| Drops | Where each resource will drop their pipeline artifacts |
-| Workspace | DocFxHelper's working folder |
-| Site | The DocFx generated site |
+| Name          | Usage                                                  |
+|---------------|--------------------------------------------------------|
+| Drops         | Where each resource will drop their pipeline artifacts |
+| Workspace     | DocFxHelper's working folder                           |
+| Site          | The DocFx generated site                               |
+| PublisherSite | The DocFxHelper Publisher site                         |
+| PublisherLogs | The DocFxHelper Publisher logs                         |
 
 Note: Tested with the following setup
 
@@ -60,19 +62,13 @@ Note: Tested with the following setup
   - Docker for Destkop: WSL Integration enabled
     - Distribution: Ubuntu
 
-| Folder    | Windows                      | WSL - Ubuntu                     |
-|-----------|------------------------------|----------------------------------|
-| Drops     | C:\dev\docfxhelper\Drops     | /mnt/c/dev/docfxhelper/Drops     |
-| Workspace | C:\dev\docfxhelper\Workspace | /mnt/c/dev/docfxhelper/Workspace |
-| Site      | C:\dev\docfxhelper\Site      | /mnt/c/dev/docfxhelper/Site      |
-
-From Ubuntu.
-
-```bash
-docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Drops drops
-docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Workspace workspace
-docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Site site
-```
+| Folder        | Windows                          | WSL - Ubuntu                         |
+|---------------|----------------------------------|--------------------------------------|
+| Drops         | C:\dev\docfxhelper\Drops         | /mnt/c/dev/docfxhelper/Drops         |
+| Workspace     | C:\dev\docfxhelper\Workspace     | /mnt/c/dev/docfxhelper/Workspace     |
+| Site          | C:\dev\docfxhelper\Site          | /mnt/c/dev/docfxhelper/Site          |
+| publishersite | C:\dev\docfxhelper\publishersite | /mnt/c/dev/docfxhelper/publishersite |
+| publisherlogs | C:\dev\docfxhelper\publisherlogs | /mnt/c/dev/docfxhelper/publisherlogs |
 
 Note: Tested with the following resources
 
@@ -85,9 +81,58 @@ Note: Tested with the following resources
 | myDotNetApi      | DotnetApi        | library compiled files (dll, pdb, xml)        |
 | myPSModule       | PowershellModule | all PowerShell source files (psd1, psm1, ps1) |
 
-### Command line
+### Windows
+
+Run publisher.ps1 from the folder where the 5 docfxhelper folders are located, and when it's finished, run docfx serve to run the web site.
+
+Install the prerequisites.
+
+- PowerShell recent (7.0 and above, currently running 7.4.2)
+- PowerShell modules:
+  - PlatyPS
+  - Posh-git
+  - Poshstache
+  - yayaml
+- dotnet recent (8.0 and above, currently running 8.0.4)
+- dotnet tools:
+  - docfx recent (2.75 and above, currently running 2.75.1)
+
+```powershell
+set-location c:\dev\docfxhelper
+. ..\github\Patware\DocFxHelper\src\publisher.ps1
+docfx serve site
+```
+
+### WSL
+
+Tested on WSL Ubuntu 22.04.4
+
+Install the prerequisites
+
+- apt
+  - rsync
+  - diff
+- PowerShell recent (7.0 and above, currently running 7.4.2)
+- PowerShell modules:
+  - PlatyPS
+  - Posh-git
+  - Poshstache
+  - yayaml
+- dotnet recent (8.0 and above, currently running 8.0.4)
+- dotnet tools:
+  - docfx recent (2.75 and above, currently running 2.75.1)
+
+Run publisher.ps1 from the folder where the 5 docfxhelper folders are located, and when it's finished, run docfx serve to run the web site.
+
+```powershell
+set-location /mnt/c/dev/docfxhelper
+. ../github/Patware/DocFxHelper/src/publisher.ps1
+docfx serve site
+```
 
 ### docker
+
+Prerequisites, Docker Desktop, enable WSL Integration with Ubuntu
 
 From Ubuntu (WSL), this src folder.
 
@@ -98,17 +143,50 @@ docker build -f publisher.dockerfile -t publisher:local .
 docker build -f site.dockerfile -t site:local .
 ```
 
-Build the docker images, with the step output
+Note, when you build the docker images, if you want the whole build logs to show, pass the --progress=plain argument.
 
 ```bash
 docker build -f publisher.dockerfile -t publisher:local --progress=plain .
 docker build -f site.dockerfile -t site:local --progress=plain .
 ```
 
+#### With 1 volume
+
+Create the volume
+
+```bash
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper docfxhelper
+
+docker volume ls --format "table {{.Name}}\t{{.Mountpoint}}\t{{.Labels}}"
+```
+
 Run the docker containers
 
 ```bash
-docker run --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site publisher:local
+docker run -it -d --volume docfxhelper:/docfxhelper publisher:local
+docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" site:local
+```
+
+Now, browse to [http://localhost:8083/](http://localhost:8083/)
+
+#### Create individual volumes
+
+Create the volumes
+
+```bash
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Drops drops
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Workspace workspace
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Site site
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/publishersite publishersite
+docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/publisherlogs publisherlogs
+
+docker volume ls --format "table {{.Name}}\t{{.Mountpoint}}\t{{.Labels}}"
+```
+
+Run the docker containers
+
+```bash
+docker run -it -d --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site --volume publishersite:/docfxhelper/publishersite --volume publisherlogs:/docfxhelper/publisherlogs publisher:local
 docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" site:local
 ```
 
@@ -116,76 +194,30 @@ Now, browse to [http://localhost:8083/](http://localhost:8083/)
 
 ### docker-compose
 
+Prerequisites, Docker Desktop, enable WSL Integration with Ubuntu
+
+From Ubuntu (WSL), this src folder, build the docker images:
+
+```bash
+docker build -f publisher.dockerfile -t publisher:local .
+docker build -f site.dockerfile -t site:local .
+```
+
+Start docker compose
+
+```bash
+docker-compose --file docker.compose.yml --project-name docfxhelper up --detach
+```
+
+Now, browse to [http://localhost:8084/](http://localhost:8084/)
+
 ### Kubernetes
 
 Local kubernetes, see [k8s.local](./k8s.local/README.md) README.
 
-## Setup
+## Using DocFxHelper
 
-### Docker Compose
-
-Docker images are indempotent, so you'll want volumes the following volumes:
-
-- drops : where you upload your pipeline artifacts to
-- site: docfx generated html site
-- workspace [optional]: workspace for docfxhelper.  Can be useful for troubleshooting, viewing logs.
-
-The creation of volumes is outside the scope of this README, but here are examples of volumes, including the optional workspace volume:
-
-### [Windows](#tab/windows)
-
-On a Windows workstation (host), created two folders:
-
-- C:\docfxhelper\drops
-- C:\docfxhelper\site
-
-And created 2 docker volumes that target those folders:
-
-```shell
-docker volume create --driver local --opt type=none --opt o=bind --opt device=D:\\docfxhelper\\drops --name docfxhelper_drops
-docker volume create --driver local --opt type=none --opt o=bind --opt device=D:\\docfxhelper\\workspace --name docfxhelper_workspace
-docker volume create --driver local --opt type=none --opt o=bind --opt device=D:\\docfxhelper\\site --name docfxhelper_site
-```
-
-And the docker compose would look like:
-
-```yaml
-version: "3.8"
-name: docs
-services:
-  site:
-    build:
-      context: .
-      dockerfile: site.dockerfile
-    image: site:latest
-    ports:
-      - "8081:80"
-    environment:
-      NGINX_PORT: 80
-    volumes:
-      - "docfxhelper_site:/usr/share/nginx/html/"
-  publisher:
-    build:
-      context: .
-      dockerfile: publisher.dockerfile
-    image: publisher:latest
-    volumes:
-      - "docfxhelper_drops:/docfxhelper/drops"
-      - "docfxhelper_workspace:/docfxhelper/workspace"
-      - "docfxhelper_site:/docfxhelper/site"
-volumes:
-  docfxhelper_drops:
-  docfxhelper_workspace: 
-  docfxhelper_site:  
-
-```
-
-### [Azure](#tab/azure)
-
-Content for Azure...
-
----
-
+With DocFxHelper running, all that is left to do is to drop your specs in the Drops\{SpecName}\ folder.
 
 ## Example scenario
 

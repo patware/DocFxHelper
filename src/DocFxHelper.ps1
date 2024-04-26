@@ -1,5 +1,5 @@
 #Requires -Version 7
-#Requires -Modules 'Posh-git', 'yayaml', 'Poshstache'
+#Requires -Modules 'Posh-git', 'Poshstache', 'yayaml'
 <#
   .SYNOPSIS
   Helps teams merge various document sources into one site.

@@ -1,4 +1,4 @@
-#Requires -modules 'Posh-git', 'Poshstache', 'PlatyPS', 'yayaml'
+#Requires -modules 'PlatyPS', 'Posh-git', 'Poshstache', 'yayaml'
 
 . $PSScriptRoot/DocFxHelper.ps1
 

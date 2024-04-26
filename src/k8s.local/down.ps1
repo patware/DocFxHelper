@@ -16,4 +16,5 @@ set-location $PSScriptRoot
 & kubectl delete -f workspace-pv.yaml
 & kubectl delete -f drops-pv.yaml
 
+Write-Host "What's left?"
 & kubectl get all

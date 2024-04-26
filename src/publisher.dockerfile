@@ -5,9 +5,9 @@
 #  docker build -f publisher.dockerfile -t publisher:local --progress=plain .
 # run: 
 #  3 distinct volume mounts
-#    docker run --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site publisher:local
+#    docker run -it -d --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site publisher:local
 #  1 volume mount with the drops, workspace and site subfolders (FYI case is important)
-#    docker run --volume docfxhelper:/docfxhelper publisher:local
+#    docker run -it -d --volume docfxhelper:/docfxhelper publisher:local
 
 ARG DOTNET_SDK_VERSION=8.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK_VERSION}

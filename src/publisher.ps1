@@ -1,4 +1,4 @@
-#Requires -Modules 'Posh-git', 'yayaml', 'Poshstache', 'PlatyPS'
+#Requires -Modules PlatyPS, Posh-git, Poshstache, yayaml
 
 param(
   [System.IO.DirectoryInfo]$DropsPath = "Drops",
