@@ -25,7 +25,7 @@ spec:
         - env:
             - name: NGINX_PORT
               value: "80"
-          image: site:local
+          image: docs:local
           name: site
           ports:
             - containerPort: 80

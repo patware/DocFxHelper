@@ -1,0 +1,67 @@
+###### If you're  using the Kubernetes Service you can remove the listening on 80 because you can set the service to 443
+
+server {
+   listen 80;
+   server_name _;
+   return 301 https://$host$request_uri;
+}
+
+server {
+    listen       ${NGINX_PORT} ssl;
+    listen  [::]:${NGINX_PORT};
+
+    # The server certificate is a public entity. Replace the filename with whatever you want, we would need the value for the config maps
+    # ssl_certificate /etc/nginx/ssl/docs.crt;
+    ssl_certificate /mnt/secret/docs.certificate.crt;
+    
+    # Certificate Key is the private key for the certificate. Replace the filename with whatever you want, we would need the value for the config maps
+    # ssl_certificate_key /etc/nginx/ssl/docsprivate.key;
+    ssl_certificate_key /mnt/secret/docs.private.key;
+    
+    server_name  localhost ${NGINX_HOST};
+    # Set the SSL protocols and Ciphers
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    #access_log  /var/log/nginx/host.access.log  main;
+
+    root   /usr/share/nginx/html;
+    index  Index.html index.html index.htm default.html Default.html home.html Home.html;
+
+
+    location / {
+        try_files $uri $uri.html $uri/ =404;
+    }
+
+    #error_page  404              /404.html;
+
+    # redirect server error pages to the static page /50x.html
+    #
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+
+    # proxy the PHP scripts to Apache listening on 127.0.0.1:80
+    #
+    #location ~ \.php$ {
+    #    proxy_pass   http://127.0.0.1;
+    #}
+
+    # pass the PHP scripts to FastCGI server listening on 127.0.0.1:9000
+    #
+    #location ~ \.php$ {
+    #    root           html;
+    #    fastcgi_pass   127.0.0.1:9000;
+    #    fastcgi_index  index.php;
+    #    fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
+    #    include        fastcgi_params;
+    #}
+
+    # deny access to .htaccess files, if Apache's document root
+    # concurs with nginx's one
+    #
+    #location ~ /\.ht {
+    #    deny  all;
+    #}
+}

@@ -11,7 +11,7 @@ From this folder.
 ```powershell
 
 cd ..
-& docker build -f site.dockerfile -t site:local .
+& docker build -f site.dockerfile -t docs:local .
 & docker build -f publisher.dockerfile -t publisher:local .
 
 cd k8s.local

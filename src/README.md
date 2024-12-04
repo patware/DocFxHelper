@@ -64,11 +64,11 @@ Note: Tested with the following setup
 
 | Folder        | Windows                          | WSL - Ubuntu                         |
 |---------------|----------------------------------|--------------------------------------|
-| Drops         | C:\dev\docfxhelper\Drops         | /mnt/c/dev/docfxhelper/Drops         |
-| Workspace     | C:\dev\docfxhelper\Workspace     | /mnt/c/dev/docfxhelper/Workspace     |
-| Site          | C:\dev\docfxhelper\Site          | /mnt/c/dev/docfxhelper/Site          |
-| publishersite | C:\dev\docfxhelper\publishersite | /mnt/c/dev/docfxhelper/publishersite |
-| publisherlogs | C:\dev\docfxhelper\publisherlogs | /mnt/c/dev/docfxhelper/publisherlogs |
+| Drops         | C:\dev\temp\Docs\drops         | /mnt/c/dev/docfxhelper/Drops         |
+| Workspace     | C:\dev\temp\Docs\workspace     | /mnt/c/dev/docfxhelper/Workspace     |
+| Site          | C:\dev\temp\Docs\site          | /mnt/c/dev/docfxhelper/Site          |
+| publishersite | C:\dev\temp\Docs\publishersite | /mnt/c/dev/docfxhelper/publishersite |
+| publisherlogs | C:\dev\temp\Docs\publisherlogs | /mnt/c/dev/docfxhelper/publisherlogs |
 
 Note: Tested with the following resources
 
@@ -140,14 +140,14 @@ Build the docker images:
 
 ```bash
 docker build -f publisher.dockerfile -t publisher:local .
-docker build -f site.dockerfile -t site:local .
+docker build -f docs.dockerfile -t docs:local .
 ```
 
 Note, when you build the docker images, if you want the whole build logs to show, pass the --progress=plain argument.
 
 ```bash
 docker build -f publisher.dockerfile -t publisher:local --progress=plain .
-docker build -f site.dockerfile -t site:local --progress=plain .
+docker build -f docs.dockerfile -t docs:local --progress=plain .
 ```
 
 #### With 1 volume
@@ -164,7 +164,7 @@ Run the docker containers
 
 ```bash
 docker run -it -d --volume docfxhelper:/docfxhelper publisher:local
-docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" site:local
+docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" docs:local
 ```
 
 Now, browse to [http://localhost:8083/](http://localhost:8083/)
@@ -187,7 +187,7 @@ Run the docker containers
 
 ```bash
 docker run -it -d --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site --volume publishersite:/docfxhelper/publishersite --volume publisherlogs:/docfxhelper/publisherlogs publisher:local
-docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" site:local
+docker run -it -d --volume site:/usr/share/nginx/html/ -p 8083:80 -e "NGINX_PORT=80" docs:local
 ```
 
 Now, browse to [http://localhost:8083/](http://localhost:8083/)
@@ -200,7 +200,7 @@ From Ubuntu (WSL), this src folder, build the docker images:
 
 ```bash
 docker build -f publisher.dockerfile -t publisher:local .
-docker build -f site.dockerfile -t site:local .
+docker build -f docs.dockerfile -t docs:local .
 ```
 
 Start docker compose
@@ -533,3 +533,174 @@ The azure-pipelines.yml would:
 - Publish Pipeline Artifacts
   - name: Docs
   - Content: *.md and toc.yml
+
+## Helm chart
+
+The Docs folder is the Helm chart for DocFx Helper Docs and Publisher
+
+### namespace
+
+The Helm chart works with a namespace, locally the namespace is docfxhelper, and needs to be deployed on your workstation prior to doing anything.
+
+```powershell
+kubectl apply -f .\k8s.namespace.v1.yml
+```
+
+### Validate the Chart
+
+```powershell
+kubectl config set-context --current --namespace docs-local
+helm lint docfxhelper
+helm template docfxhelper
+helm template docfxhelper --debug
+helm install local docfxhelper --debug --dry-run 
+helm install local docfxhelper --debug --values .\docfxhelper.workstation.values.yaml --dry-run 
+helm install local docfxhelper --debug  --set docs.host.ports.http=5003,docs.host.ports.https=5004,docs.host.provider=dockerDesktop --dry-run 
+```
+
+### Deploy the Chart locally
+
+```powershell
+kubectl config set-context --current --namespace docfxhelper
+az acr login --name testaks.azurecr.io
+# helm install my docfxhelper --debug --set docs.host.ports.http=5003,docs.host.ports.https=5004,docs.host.provider=dockerDesktop
+# or
+helm install my docfxhelper --debug --values .\docfxhelper.workstation.values.yaml
+helm list
+helm status my
+kubectl get all
+```
+
+### Uninstalling a deployment by Helm
+
+```powershell
+kubectl config set-context --current
+helm uninstall my
+kubectl get all
+```
+
+## running local/workstation
+
+You'l need:
+
+- Prerequisites:
+  - [Install](#install-docker-for-windows-and-enable-kubernetes) Docker for Windows and enable Kubernetes
+  - [Enable Ingress](#enable-ingress)
+
+- Create deployment
+- Create service
+- Create ingress resource
+- Add host into local hosts file
+- Test
+
+### Install Docker for Windows and enable Kubernetes
+
+Install Docker application with all the default options and enable Kubernetes
+
+Manual install: [Download](https://docs.docker.com/desktop/install/windows-install/)
+
+winget: (run PowerShell or shell as admin)
+
+```powershell
+winget install Docker.DockerDesktop
+```
+
+Start Docker Desktop, enable Kubernetes
+
+### Install Ingress
+
+Run this commands:
+
+```powershell
+helm upgrade --install ingress-nginx ingress-nginx --repo https://kubernetes.github.io/ingress-nginx --namespace ingress-nginx --create-namespace
+```
+
+Sample result:
+
+```dos
+Release "ingress-nginx" has been upgraded. Happy Helming!
+NAME: ingress-nginx
+LAST DEPLOYED: Mon Jul 17 08:44:01 2023
+NAMESPACE: ingress-nginx
+STATUS: deployed
+REVISION: 2
+TEST SUITE: None
+NOTES:
+The ingress-nginx controller has been installed.
+It may take a few minutes for the LoadBalancer IP to be available.
+You can watch the status by running 'kubectl --namespace ingress-nginx get services -o wide -w ingress-nginx-controller'
+
+An example Ingress that makes use of the controller:
+  apiVersion: networking.k8s.io/v1
+  kind: Ingress
+  metadata:
+    name: example
+    namespace: foo
+  spec:
+    ingressClassName: nginx
+    rules:
+      - host: www.example.com
+        http:
+          paths:
+            - pathType: Prefix
+              backend:
+                service:
+                  name: exampleService
+                  port:
+                    number: 80
+              path: /
+    # This section is only required if TLS is to be enabled for the Ingress
+    tls:
+      - hosts:
+        - www.example.com
+        secretName: example-tls
+
+If TLS is enabled for the Ingress, a Secret containing the certificate and key must also be provided:
+
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: example-tls
+    namespace: foo
+  data:
+    tls.crt: <base64 encoded cert>
+    tls.key: <base64 encoded key>
+  type: kubernetes.io/tls
+```
+
+### Test ingress
+
+```powershell
+kubectl get pods --namespace=ingress-nginx
+kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=120s
+kubectl create deployment demo --image=httpd --port=80
+kubectl expose deployment demo
+kubectl create ingress demo-localhost --class=nginx --rule="demo.localdev.me/*=demo:80"
+kubectl port-forward --namespace=ingress-nginx service/ingress-nginx-controller 5001:80
+```
+
+Test the url:
+
+```powershell
+curl --resolve demo.localdev.me:5001:127.0.0.1 http://demo.localdev.me:5001
+```
+
+Launch the browser to the address [demo.localdev.me:5001](http://demo.localdev.me:5001)
+
+### Delete Ingress Test Demo
+
+```powershell
+kubectl delete ingress demo-localhost
+kubectl delete deployment demo
+kubectl delete service demo
+```
+
+### Cert
+
+```bash
+openssl pkcs12 -in your-certificate.pfx -nocerts -out private-key.pem -nodes
+openssl pkcs12 -in your-certificate.pfx -clcerts -nokeys -out certificate.pem
+
+ca bundle:
+openssl pkcs12 -in your-certificate.pfx -out ca-bundle.pem -nodes -nokeys -cacerts
+```

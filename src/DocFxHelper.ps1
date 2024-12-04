@@ -29,10 +29,18 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.10.2"; title="Fix: ADOWiki moved the _adoWikiUri"}
     [ordered]@{version=[Version]"0.3.10.3"; title="Multiple ADOWiki fixes stabilization phase"}
     [ordered]@{version=[Version]"0.3.11"; title="Test-Different"}
+    [ordered]@{version=[Version]"0.3.11.1"; title="Add more output to the robo and diff return codes"}
+    [ordered]@{version=[Version]"0.3.11.2"; title="AddResource_ToParent: Added Test-Path and create directory if not exists (which should exist anyway)"}
+    [ordered]@{version=[Version]"0.3.11.3"; title="Wrapped IO commands with CommandWithRetry to get around IO issues"}
+    [ordered]@{version=[Version]"0.3.11.4"; title="Fix: Problem in copy-robo, added more detailed output/logging"}
+    [ordered]@{version=[Version]"0.3.11.5"; title="Fix: Still failed remove-items, bumping RetryCount to 50!"}
+    [ordered]@{version=[Version]"0.3.12"; title="Logging in ViewModel_setDocFxHelperResourceHierarchy"}
+    [ordered]@{version=[Version]"0.3.12.1"; title="Remove-items got close to 50, bumping RetryCount to 99!"}
+    [ordered]@{version=[Version]"0.3.13"; title="New spec type ApiYaml"}
 )
 
-$script:DocFxHelperVersion = $DocFxHelperVersions[-1]
-Write-Host "DocFxHelper.ps1 Version [$($DocFxHelperVersion.Version)] $($DocFxHelperVersion.title)"
+$global:DocFxHelperVersion = $DocFxHelperVersions[-1]
+Write-Host "DocFxHelper.ps1 Version [$($global:DocFxHelperVersion.Version)] $($global:DocFxHelperVersion.title)"
 
 <#
   Normal mode:
@@ -300,17 +308,27 @@ function Copy-Robo
 
   Write-Host "Running $cmd $($a -join " ")"
   $res = & $cmd @a
+  Write-Host "Checking the $cmd's return code [$LastExitCode]"
+  $resString = $res | out-string
   if ($cmd -eq "robocopy")
-  {
+  {    
     if ($LastExitCode -gt 7)
     {
-      Write-Error ($res | out-string)
+      Write-Error $resString
+    }
+    else
+    {
+      Write-Verbose $resString
     }
   }elseif ($cmd -eq "rsync")
   {
     if ($LastExitCode -ne 0)
     {
-      Write-Error ($res | out-string)
+      Write-Error $resString
+    }
+    else
+    {
+      Write-Verbose $resString
     }
   }
   Write-Host "Finished running $cmd $($a -join " "): result code [$LastExitCode]"
@@ -370,9 +388,11 @@ function Test-Different
     $a = @("$source", "$destination", "/MIR", "/L", "/NS", "/NC", "/NFL", "/NDL", "/NP", "/NJH")
   }
 
-  Write-Host "Running $cmd $($a -join " ")"
+  Write-Host "Running Command [$cmd] $($a -join " ")"
 
   $res = & $cmd @a
+
+  Write-Host "Command [$cmd] executed, checking return codes"
 
   $res = $null
   if ($cmd -eq "robocopy")
@@ -1116,13 +1136,16 @@ function script:ViewModel_setDocFxHelperResourceHierarchy
   $docfxhelper_json=$null
   if ($DocFxHelperFiles.docfxhelper_json)
   {
+    Write-Verbose "Using docfxhelper.json from `$DocFxHelperFiles.docfxhelper_json"
     $docfxhelper_json = $DocFxHelperFiles.docfxhelper_json
   }
   else
   {
+    Write-Verbose "Using docfxhelper.json from docfx.json path"
     $docfxhelper_json = (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
   }
   
+  Write-verbose "docfxhelper.json: [$($docfxhelper_json)]"
   $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content $docfxhelper_json
 }
 
@@ -1297,7 +1320,14 @@ function script:AddResource_ToParent
     $tocItem  | ConvertTo-Yaml -depth 10
   #>
   
+  Write-Debug "ParentTocYml: [$($ParentTocYml)]"
   Push-Location (Split-Path $ParentTocYml)
+  Write-Debug "ResourcePath: [$($ResourcePath)]"
+  if (!(Test-Path $ResourcePath))
+  {
+    Write-Debug "ResourcePath: [$($ResourcePath)] - not found !??? - Creating regardless"
+    New-Item $ResourcePath -ItemType Directory
+  }
   $ResourceRelativePath = (Resolve-Path $ResourcePath -relative)
   Pop-location
   if ($ParentTocYmlIsRoot)
@@ -2804,6 +2834,11 @@ function New-DocFx
 
   process
   {
+    if (!(Test-Path $Target))
+    {
+      Write-Verbose "Path [$($Target)] not found, creating"
+      [void](New-Item $Target -ItemType Directory -Force)
+    }
     $docfx_json = join-path $Target -ChildPath "docfx.json"
     Write-Debug "docfx will be [$($docfx_json)]"
 
@@ -2829,7 +2864,8 @@ function New-DocFx
           $Destination = Join-Path $Target.FullName -ChildPath $template
           Write-Host "DocFx Template [$template] found, copying to [$Destination]"
           #& robocopy $templatePath $Destination /MIR
-          Copy-Robo -Source $templatePath -Destination $Destination -Mirror -ShowFullPath -Verbose
+          Invoke-CommandWithRetry {Copy-Robo -Source $templatePath -Destination $Destination -Mirror -ShowFullPath -Verbose} -RetryCount 99 -TimeoutInSecs 5
+          
         }
         else
         {
@@ -2849,24 +2885,6 @@ function New-DocFx
       }
       all = @()
     }
-
-    if ($DebugPreference -eq 'Continue')
-    {
-      Write-Debug "DocFxHelper.json:"
-      $DocFxHelper | ConvertTo-Json -Depth 4 | Write-Debug
-    }
-
-    $docfxhelper_json=$null
-    if ($DocFxHelperFiles.docfxhelper_json)
-    {
-      $docfxhelper_json = $DocFxHelperFiles.docfxhelper_json
-    }
-    else
-    {
-      $docfxhelper_json = (join-path $Target -ChildPath "docfxhelper.json")
-    }
-    
-    $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content $docfxhelper_json
 
   }
 
@@ -3820,6 +3838,104 @@ function Add-RestApi
   return $DocFxHelper
 }
 
+function Add-ApiYaml
+{
+  param(
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
+    [Parameter(Mandatory)][string]$Id,
+    [string]$Target,
+    [string]$MenuParentItemName,
+    [string]$MenuDisplayName,
+    [int]$MenuPosition = -1,
+    [string]$MenuUid,
+    [string[]]$Excludes,
+    [string[]]$Medias,
+    [string]$ParentId
+  )
+
+  Write-Debug "----------------------------------------------"
+  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
+  Write-Debug "Path:     [$Path]"
+  Write-Debug "Id:       [$Id]"
+
+  Push-Location (split-path $DocFxHelper.docFx.Path)
+  
+  Write-Debug "----------------------------------------------"
+  Write-Host "Prepare ViewModel $Path"
+  $a = @{
+    ResourceType       = [ResourceType]::Api
+    Id                 = $Id
+    Path               = $Path.FullName    
+    Target             = $Target
+    MenuParentItemName = $MenuParentItemName
+    MenuDisplayName    = $MenuDisplayName
+    MenuPosition       = $MenuPosition
+    MenuUid            = $MenuUid
+    Medias             = $Medias
+    ParentId           = $ParentId
+  }
+  $viewModel = ViewModel_getGenericResourceViewModel @a
+  
+  
+  Write-Debug "----------------------------------------------"
+  Write-Debug "Add Resource ViewModel to DocFxHelper"
+  Add-DocFxHelperResource -Resource $viewModel
+  
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
+  }
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+  
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"  
+  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
+  
+  $apiYamlMeta = [ordered]@{
+    Build = [ordered]@{
+      Content      = [ordered]@{
+          files = @("**/*.yaml", "**/*.yml")
+          src   = (Resolve-Path $Path.FullName -Relative)
+      }
+    }
+  }
+
+  if ($viewModel.Target -ne "/")
+  {
+    $apiYamlMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host "Adding Resource to DocFx.json"
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $apiYamlMeta
+  
+  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
+
+  pop-location
+  return $DocFxHelper
+}
+
 function ConvertTo-DocFxConceptual
 {
   param(
@@ -4296,7 +4412,7 @@ function Get-DocFxBuildLogViewModel
 
   $vm = [ordered]@{
     DocFxVersion = "$(((& docfx --version) -split "\+")[0] )"
-    DocFxHelperVersion = "$($DocFxHelperVersion)"
+    DocFxHelperVersion = "$($global:DocFxHelperVersion)"
     GeneratedDateTime = "$((Get-Date))"
     StartedAt = $docfxBuildResult[0].date_time.ToString("hh:mm:ss")
     FinishedAt = $docfxBuildResult[-1].date_time.ToString("hh:mm:ss")

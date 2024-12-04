@@ -7,8 +7,8 @@ services:
   site:
     build:
       context: .
-      dockerfile: site.dockerfile
-    image: site:local
+      dockerfile: docs.dockerfile
+    image: docs:local
     ports:
       - "8084:80"
     environment:

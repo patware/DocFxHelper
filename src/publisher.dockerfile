@@ -5,15 +5,15 @@
 #  docker build -f publisher.dockerfile -t publisher:local --progress=plain .
 # run: 
 #  3 distinct volume mounts
-#    docker run -it -d --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume site:/docfxhelper/site publisher:local
-#  1 volume mount with the drops, workspace and site subfolders (FYI case is important)
+#    docker run -it -d --volume drops:/docfxhelper/drops --volume workspace:/docfxhelper/workspace --volume docs:/docfxhelper/docs publisher:local
+#  1 volume mount with the drops, workspace and docs subfolders (FYI case is important)
 #    docker run -it -d --volume docfxhelper:/docfxhelper publisher:local
 
 ARG DOTNET_SDK_VERSION=8.0
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK_VERSION}
 
-LABEL version="0.0.3"
-LABEL releasenotes="Parameterized FROM image tag"
+LABEL version="0.0.6"
+LABEL releasenotes="Publisher job copies nooutputyet.html and adds NerdStats to output"
 LABEL image_reference="https://hub.docker.com/_/microsoft-dotnet-sdk/"
 
 # Add dotnet tools to path.
@@ -33,7 +33,7 @@ COPY . .
 # All DocFxHelper script working folders will be based out of /docfxhelper folder
 #  /docfxhelper/drops: Where Specs and meta will uploaded to for consumption by DocFxHelper PowerShell scripts
 #  /docfxhelper/workspace: DocFxHelper script's internal working folder
-#  /docfxhelper/site: Where DocFx generated _site will copied to and made available to the site image
+#  /docfxhelper/docs: Where DocFx generated _site will copied to and made available to the docs image
 
 WORKDIR /docfxhelper
 CMD ["pwsh", "-File", "/app/publisher.ps1", "-DropsPath", "drops", "-WorkspacePath", "workspace", "-SitePath", "site"]
