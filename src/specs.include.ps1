@@ -1,4 +1,4 @@
-#Requires -modules 'Posh-git', 'Poshstache', 'PlatyPS', 'yayaml'
+#Requires -modules 'PlatyPS', 'Posh-git', 'Poshstache', 'yayaml'
 
 . $PSScriptRoot/DocFxHelper.ps1
 
@@ -18,10 +18,19 @@ $script:SpecsIncludeVersions = @(
   [ordered]@{version = [Version]"0.1.10"; title = "Using new docfxhelper as remote meta" }
   [ordered]@{version = [Version]"0.1.11"; title = "PowershellModule remove fake ps repo, Import-Module from path to psd1/psm1" }
   [ordered]@{version = [Version]"0.1.12"; title = "Add properties Medias and Excludes to DocSpecResource type" }
+  [ordered]@{version = [Version]"0.1.13"; title = "Try catch around PS PowerShell Module" }
+  [ordered]@{version = [Version]"0.1.14"; title = "PowerShell module spec loading, setting Psd1 value fallback using any psd1/psm1 file found in path" }
+  [ordered]@{version = [Version]"0.1.14.1"; title = "Wrapped IO commands with CommandWithRetry to get around IO issues" }
+  [ordered]@{version = [Version]"0.1.14.2"; title = "Fix: problem with Remove-Item, solution = Use the -Force" }
+  [ordered]@{version = [Version]"0.1.14.3"; title = "Fix: Still failed remove-items, bumping RetryCount to 50!" }
+  [ordered]@{version = [Version]"0.1.15"; title = "Logging in the Virtual Path when not set" }
+  [ordered]@{version = [Version]"0.1.15.1"; title = "Remove-items got close to 50, bumping RetryCount to 99!" }
+  [ordered]@{version = [Version]"0.1.16"; title = "Add missing RepoRelativePath arg" }
+  [ordered]@{version = [Version]"0.1.17"; title = "New spec type ApiYaml" }
 )
 
-$script:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
-Write-Host "specs.include.ps1 Version [$($SpecsIncludeVersion.Version)] $($SpecsIncludeVersion.title)"
+$global:SpecsIncludeVersion = $SpecsIncludeVersions[-1]
+Write-Host "specs.include.ps1 Version [$($global:SpecsIncludeVersion.Version)] $($global:SpecsIncludeVersion.title)"
 
 #region DocSpec classes
 enum DocSpecType
@@ -33,6 +42,7 @@ enum DocSpecType
   PowerShellModule = 5
   Conceptual = 6
   Template = 7
+  ApiYaml = 8
 }
 
 class DocSpecTemplate
@@ -74,9 +84,10 @@ class DocSpecResource : DocSpec
   {
     if ($null -eq $this._virtualPath)
     {
-      Write-Debug "Calculating Virtual Path Fixed"
+      Write-Debug "VirtualPath not set for ID: [$($this.Id)] - Calculating Virtual Path Fixed"
       $baseUri = [Uri]::new("http://home.local")
       $this._virtualPath = [Uri]::new($baseUri, (("/$($this.Target)/" -split "/" | where-object { $_ })) -join "/").AbsolutePath
+      Write-Debug "VirtualPath for ID: [$($this.Id)] - [$($this._virtualPath)]"
     }
 
     return $this._virtualPath
@@ -130,6 +141,7 @@ class DocSpecPowershellModule : DocSpecResource
       $f = Join-Path $this.Path -ChildPath "$($this.Name).psd1"
       if (Test-Path $f)
       {
+        Write-Debug "Found .psd1 with the given spec name: [$($f)]"
         $this.Psd1 = $f
       }
       else
@@ -137,7 +149,34 @@ class DocSpecPowershellModule : DocSpecResource
         $f = Join-Path $this.Path -ChildPath "$($this.Name).psm1"
         if (Test-Path $f)
         {
+          Write-Debug "Found .psm1 with the given spec name: [$($f)]"
           $this.Psd1 = $f
+        }
+        else
+        {
+          $f = Get-ChildItem -Path $this.Path -Filter "*.psd1"
+
+          if ($f)
+          {
+            $this.Psd1 = $f | select-object -first 1 -ExpandProperty FullName
+            Write-Debug "Found a .psd1 in the spec path: [$($this.Psd1)]"
+          }
+          else
+          {
+            $f = Get-ChildItem -Path $this.Path -Filter "*.psm1"
+           
+            if ($f)
+            {
+              $this.Psd1 = $f | select-object -first 1 -ExpandProperty FullName
+              Write-Debug "Found a .psm1 in the spec path: [$($this.Psd1)]"
+            }
+            else
+            {
+              Write-Warning "No .psd1 nor any .psm1 found for this PowerShell Module."
+              Write-Information "  Check the files in path: [$($this.Path)]"
+            }
+            
+          }
         }
       }
     }
@@ -230,6 +269,7 @@ class DocSpecs
         
     foreach ($spec in $sorted)
     {
+      Write-Debug "BuildHierarchy - $($spec.Id)"
       [void]$this.Ordered.Add($spec)
       [void]$this.Children.Add($spec.Id, ($sorted | where-object { $_.ParentId -eq $spec.Id }))
       [void]$this.Hierarchy.Add($spec.Id, ($sorted | where-object { $_.Id -ne $spec.Id -and $_.VirtualPath() -like "$($spec.VirtualPath())*" }))
@@ -281,47 +321,45 @@ function Get-ListSortedTopologically
 
     $counter = 0
 
-    do
+    while ($todo.Count -gt 0 -and $whereScriptBlocks.count -gt 0)
     {
-      while ($todo.Count -gt 0 -and $whereScriptBlocks.count -gt 0)
+      $counter++
+      Write-Verbose "Round #$($counter)"
+      $whereScriptBlock = $whereScriptBlocks[0]
+      $whereScriptBlocks.RemoveAt(0)
+
+      Write-Debug "Searching for [$whereScriptBlock]"
+
+      $thisBatch = $todo  | where-object $whereScriptBlock
+
+      if ($thisBatch.Count -gt 0)
       {
-        $counter++
-        Write-Verbose "Round #$($counter)"
-        $whereScriptBlock = $whereScriptBlocks[0]
-        $whereScriptBlocks.RemoveAt(0)
-
-        Write-Debug "Searching for [$whereScriptBlock]"
-
-        $thisBatch = $todo  | where-object $whereScriptBlock
-
-        if ($thisBatch.Count -gt 0)
+        foreach ($item in $thisBatch)
         {
-          foreach ($item in $thisBatch)
+          if ($DebugPreference -eq 'Continue')
           {
-            if ($DebugPreference -eq 'Continue')
-            {
-              Write-Debug ($item | convertto-json)
-            }
-            [void]$res.Add([PSCustomObject]$item)
+            Write-Debug ($item | convertto-json)
           }
-         
-
-          Write-Debug "Found $($thisBatch.Count) items"
-
-          $thisBatchIds = $thisBatch | Select-Object id -ExpandProperty "$idName"
-          Write-Debug "Found ids in this batch [$($thisBatchIds -join ",")]"
-          Write-Debug "Adding [Filter] for next batch"
-
-          [void]$whereScriptBlocks.Add({ $_."$parentIdPropertyName" -in $thisBatchIds })
-
-          $todo = $todo | where-object { $_."$idName" -notin $thisBatchIds }
-
+          [void]$res.Add([PSCustomObject]$item)
         }
+        
 
-        Write-Debug($todo | format-table -AutoSize | Out-String)
-        Write-Debug "Remaining number of items to filter: [$($todo.Count)]"
+        Write-Debug "Found $($thisBatch.Count) items"
+
+        $thisBatchIds = $thisBatch | Select-Object id -ExpandProperty "$idName"
+        Write-Debug "Found ids in this batch [$($thisBatchIds -join ",")]"
+        Write-Debug "Adding [Filter] for next batch"
+
+        [void]$whereScriptBlocks.Add({ $_."$parentIdPropertyName" -in $thisBatchIds })
+
+        $todo = $todo | where-object { $_."$idName" -notin $thisBatchIds }
+
       }
-    } while ($todo.Count -gt 0)
+
+      Write-Debug($todo | format-table -AutoSize | Out-String)
+      Write-Debug "Remaining number of items to filter: [$($todo.Count)]"
+    }
+
     return $res.ToArray()
   }
 }
@@ -347,6 +385,7 @@ function ConvertFrom-Specs
   {
     foreach ($item in $InputObject)
     {
+      Write-Information "ConvertFrom-specs item [$Item]"
       if (Test-Path $item)
       {
         [void]$ret.Add($item)
@@ -355,6 +394,7 @@ function ConvertFrom-Specs
 
     if ($Path)
     {
+      Write-Information "ConvertFrom-specs path [$Path]"
       [void]$ret.Add($Path)
     }
   }
@@ -664,13 +704,18 @@ function Convert-DocResource
         $Path 
         $Destination 
     #>
+
+  Write-Information "[Convert-DocResource]"
+  Write-Information "            Spec Id [$($spec.Id)]"
+  Write-Information "          Spec Type [$($spec.Type)]"
+  Write-Information "        Spec Target [$($Spec.Target)]"
+  Write-Information "              -Path [$($Path)]"
+  Write-Information "       -Destination [$($Destination)]"
+  Write-Information " -UseModernTemplate [$($UseModernTemplate)]"
+
     
   $pagesUidPrefix = Get-DocFxHelperResourcePageUidPrefix -Target $Spec.Target
-    
-  Write-Information " Converting Spec [$($spec.Id)]"
-  Write-Information "       Spec Type [$($spec.Type)]"
-  Write-Information "            From [$($Path)]"
-  Write-Information "     Destination [$($Destination)]"
+
   Write-Information "Pages UID Prefix [$($pagesUidPrefix)]"
    
 
@@ -682,13 +727,14 @@ function Convert-DocResource
       Write-Information "Ado Wiki Url [$($spec.WikiUrl)]"
 
       Write-Debug "Copy-Robo $Path $Destination -Mirror"
-      #& robocopy $Path $Destination /MIR
       Copy-Robo -Source $Path -Destination $Destination -Mirror -ShowFullPath -ShowVerbose
 
       $a = @{}
 
       if ($UseModernTemplate) { $a.UseModernTemplate = $true }
       if ($spec.IsRoot) { $a.IsRootWiki = $spec.IsRoot }
+      if ($spec.RepoRelativePath) {$a.RepoRelativePath = $spec.RepoRelativePath}
+
       $a.AllMetadataExportPath = (Join-Path (Split-Path $Destination) -ChildPath "$(Split-Path $Destination -Leaf).allmetadata.json")
             
       Write-Information "Calling ConvertTo-DocFxAdoWiki -Path $Destination -WikiUri $($spec.WikiUrl) -PagesUidPrefix $pagesUidPrefix"
@@ -723,7 +769,7 @@ function Convert-DocResource
 
       if (Test-Path $docfx_metadata_log_json)
       {
-        remove-item $docfx_metadata_log_json
+        remove-item $docfx_metadata_log_json -Force
       }
 
       $docfx_metadata | convertTo-json -Depth 5 | set-content $docfx_json
@@ -738,12 +784,12 @@ function Convert-DocResource
 
         $docfx_metadata_log | Group-Object severity | select-object Name, Count | format-table -AutoSize | out-Host
 
-        remove-item $docfx_metadata_log_json
+        remove-item $docfx_metadata_log_json -Force
       }
 
       if (Test-Path $docfx_json)
       {
-        remove-item $docfx_json
+        remove-item $docfx_json -Force
       }
 
     }
@@ -753,7 +799,6 @@ function Convert-DocResource
       Write-Information "REST API - will use swagger.json at docfx build"
             
       Write-Debug "Copy-Robo $Path $Destination"
-      #& robocopy $Path $Destination /MIR
       Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose
 
     }
@@ -763,39 +808,49 @@ function Convert-DocResource
 
       #Register-PowerShellModuleFakePSRepository -Path $Path -ModuleName $spec.Name
       #Install-Module $spec.Name -Repository $spec.Name -scope CurrentUser
-      Import-Module $spec.Psd1 -Force
+      Write-Information "Import-Module `$spec.Psd1 [$($spec.Psd1)]"
 
-      $moduleDetails = Get-Module $spec.Name
-      $exportedFunctions = Get-PowerShellModuleExportedFunction -ModuleDetails $moduleDetails
-      $exportedFunctions | ConvertTo-PowerShellModuleFunctionHelp -CloneUrl $spec.CloneUrl -ModuleRelativePath $spec.RepoRelativePath -RepoBranch $spec.Branch -Target $Destination
-      $viewModel = Get-PowerShellModuleViewModel -moduleDetails $moduleDetails -CloneUrl $spec.CloneUrl -ModuleRelativePath $spec.RepoRelativePath -RepoBranch $spec.Branch
-      New-PowerShellModuleIndex -ViewModel $viewModel -Target $Destination
-      New-PowerShellModuleToc -ViewModel $viewModel -Target $Destination
-            
-      Remove-Module $spec.Name -ErrorAction SilentlyContinue
-      # while (get-module $spec.Name -ListAvailable) {
-      #   Uninstall-Module $spec.Name
-      # }
-      # if (Get-PSRepository | where-object { $_.Name -eq $spec.Name }) {
-      #   Unregister-PSRepository -Name $spec.Name
-      # }
+      $importedModule = $null
+      try
+      {
+        $importedModule = Import-Module $spec.Psd1 -Force -PassThru 
+      }
+      catch{
+        Write-Warning "Problem importing module [$($spec.Psd1)]"
+        Write-Host "Error:"
+        Write-Host "Message: $($Error[0].Exception.Message)"
+        Write-Host "Source: $($Error[0].Exception.Source)"
+      }
+      
+      if ($importedModule)
+      {
+        $moduleDetails = Get-Module $spec.Name
+        $exportedFunctions = Get-PowerShellModuleExportedFunction -ModuleDetails $moduleDetails
+        $exportedFunctions | ConvertTo-PowerShellModuleFunctionHelp -CloneUrl $spec.CloneUrl -ModuleRelativePath $spec.RepoRelativePath -RepoBranch $spec.Branch -Target $Destination
+        $viewModel = Get-PowerShellModuleViewModel -moduleDetails $moduleDetails -CloneUrl $spec.CloneUrl -ModuleRelativePath $spec.RepoRelativePath -RepoBranch $spec.Branch
+        New-PowerShellModuleIndex -ViewModel $viewModel -Target $Destination
+        New-PowerShellModuleToc -ViewModel $viewModel -Target $Destination
+              
+        Remove-Module $spec.Name -ErrorAction SilentlyContinue
 
-      $pagesUidPrefix = Get-DocFxHelperResourcePageUidPrefix -Target $Spec.Target
-
-      $a = @{}
-      if ("" -ne "$($spec.Branch)") { $a.RepoBranch = $spec.Branch }
-      if ("" -ne "$($spec.RepoRelativePath)") { $a.RepoRelativePath = $spec.RepoRelativePath }
-      ConvertTo-DocFxPowerShellModule -Path $Destination -PagesUidPrefix $pagesUidPrefix -CloneUrl $Spec.CloneUrl @a
-            
+        $a = @{}
+        if ("" -ne "$($spec.Branch)") { $a.RepoBranch = $spec.Branch }
+        if ("" -ne "$($spec.RepoRelativePath)") { $a.RepoRelativePath = $spec.RepoRelativePath }
+        ConvertTo-DocFxPowerShellModule -Path $Destination -PagesUidPrefix $pagesUidPrefix -CloneUrl $Spec.CloneUrl @a
+  
+      }
+      else
+      {
+        Write-Host "Ignored: [$($spec.Name)] because couldn't load module"
+      }
 
     }
     Conceptual
     {
       Write-Information "Conceptual - just copy to converted"
             
-      Write-Debug "Copy-Robo $Path $Destination"
-      #& robocopy $Path $Destination /MIR
-      Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose
+      Write-Debug "Copy-Robo $Path $Destination"   
+      Invoke-CommandWithRetry {Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose} -RetryCount 99 -TimeoutInSecs 5
             
       $a = @{}
       if ("" -ne "$($spec.Branch)") { $a.RepoBranch = $spec.Branch }
@@ -811,6 +866,14 @@ function Convert-DocResource
     }
     Template
     {
+
+    }
+    ApiYaml
+    {
+      Write-Information "ApiYaml - just copy to /converted, no conversion needed"
+            
+      Write-Debug "Copy-Robo $Path $Destination"   
+      Invoke-CommandWithRetry {Copy-Robo -Source $Path -Destination $destination -Mirror -ShowFullPath -ShowVerbose} -RetryCount 99 -TimeoutInSecs 5
 
     }
   }
@@ -835,8 +898,7 @@ function Add-DocResource
 
   if (Test-Path $Path)
   {
-    #& robocopy $Path $destination /MIR
-    Copy-Robo -Source $Path -Destination $Destination -Mirror
+    Invoke-CommandWithRetry {Copy-Robo -Source $Path -Destination $Destination -Mirror} -RetryCount 99 -TimeoutInSecs 5
   }
 
   switch ($spec.Type)
@@ -921,7 +983,20 @@ function Add-DocResource
         -Medias $spec.Medias `
         -ParentId $spec.ParentId
     }
-    Template {}   
+    Template {}
+    ApiYaml {
+      Add-ApiYaml `
+        -Path $destination `
+        -Id $spec.Id `
+        -Target $spec.Target `
+        -MenuParentItemName $spec.MenuParentItemName `
+        -MenuDisplayName $spec.MenuDisplayName `
+        -MenuPosition $spec.MenuPosition `
+        -MenuUid $spec.MenuUid `
+        -Excludes $spec.Excludes `
+        -Medias $spec.Medias `
+        -ParentId $spec.ParentId
+    }
   }
 
   Write-Information "$($spec.Id) added."

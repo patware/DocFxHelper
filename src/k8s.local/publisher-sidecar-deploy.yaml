@@ -8,16 +8,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  labels:
+    app: docfxhelper
+    tier: publisher
   name: publisher # Name of the deployment
 spec:
   replicas: 1 # Number of replicas
   selector:
     matchLabels:
-      app: publisher # Label selector for the pod
+      app: docfxhelper
+      tier: publisher # Label selector for the pod
   template:
     metadata:
       labels:
-        app: publisher # Label for the pod
+        app: docfxhelper
+        tier: publisher # Label for the pod
     spec:
       volumes:
         - name: publisher-site-volume # Publisher HTML shared volume by publisher-site and publisher-job
@@ -32,17 +37,17 @@ spec:
             claimName: workspace-pvc
         - name: site                  # Generated DocFx Site files, Written by DocFxHelper, read by site
           persistentVolumeClaim:      # Needs to be created ahead of time
-            claimName: site-pvc
+            claimName: publisher-site-pvc
       containers:
         - name: publisher-site # Main container
-          image: nginx:latest  # Use the nginx image
+          image: nginx:1.25.5  # Use the nginx image
           resources:
             requests:
+              cpu: "250m"
               memory: "64Mi"
-              cpu: "250m"
             limits:
-              memory: "128Mi"
               cpu: "250m"
+              memory: "128Mi"
           volumeMounts:
             - name: publisher-site-volume       # Publishing Status HTML - Written by DocFxHelper, read by publisher-site
               mountPath: /usr/share/nginx/html  # 

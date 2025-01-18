@@ -1,0 +1,6 @@
+docs:
+  host:
+    provider: dockerDesktop
+    ports:
+      http: 5003
+      https: 5004

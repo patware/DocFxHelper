@@ -4,11 +4,13 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   labels:
-    io.kompose.service: drops-pvc
+    app: docfxhelper
+    tier: publisher
+    type: local
   name: drops-pvc
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadOnlyMany
   resources:
     requests:
       storage: 100Mi

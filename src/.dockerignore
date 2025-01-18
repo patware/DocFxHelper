@@ -1,0 +1,12 @@
+k8s/
+k8s.local/
+k8s.Azure/
+docs/
+.dockerignore
+docker.compose.yml
+DockerFile
+k8s.deployment.v1.yml
+k8s.namespace.v1.yml
+README.md
+rebuildlocal.ps1
+*.dockerfile

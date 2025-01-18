@@ -7,8 +7,8 @@ services:
   site:
     build:
       context: .
-      dockerfile: site.dockerfile
-    image: site:local
+      dockerfile: docs.dockerfile
+    image: docs:local
     ports:
       - "8084:80"
     environment:
@@ -24,13 +24,21 @@ services:
       - drops:/docfxhelper/drops
       - workspace:/docfxhelper/workspace
       - site:/docfxhelper/site
+      - publishersite:/docfxhelper/publishersite
+      - publisherlogs:/docfxhelper/publisherlogs
 volumes:
-  drops:
+  drops:     # docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Drops drops
     external: true
     name: drops
-  workspace:
+  workspace: # docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Workspace workspace
     external: true
     name: workspace
-  site:
+  site:      # docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/Site site
     external: true
     name: site
+  publishersite: # docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/publishersite publishersite
+    external: true
+    name: publishersite
+  publisherlogs: # docker volume create --opt type=none --opt o=bind --opt device=/mnt/c/dev/docfxhelper/publisherlogs publisherlogs
+    external: true
+    name: publisherlogs

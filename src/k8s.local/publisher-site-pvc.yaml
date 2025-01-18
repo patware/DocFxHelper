@@ -1,0 +1,18 @@
+# kubectl apply -f publisher-site-pvc.yaml
+# kubectl delete -f publisher-site-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: docfxhelper
+    tier: publisher
+    type: local
+  name: publisher-site-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+  storageClassName: hostpath
+  volumeName: publisher-site-pv

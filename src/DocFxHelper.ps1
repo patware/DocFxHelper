@@ -1,5 +1,5 @@
 #Requires -Version 7
-#Requires -Modules 'Posh-git', 'yayaml', 'Poshstache'
+#Requires -Modules 'Posh-git', 'Poshstache', 'yayaml'
 <#
   .SYNOPSIS
   Helps teams merge various document sources into one site.
@@ -28,10 +28,19 @@ $script:DocFxHelperVersions = @(
     [ordered]@{version=[Version]"0.3.10.1"; title="Fix: Docfx.json ADOwiki attachments wrong dest"}
     [ordered]@{version=[Version]"0.3.10.2"; title="Fix: ADOWiki moved the _adoWikiUri"}
     [ordered]@{version=[Version]"0.3.10.3"; title="Multiple ADOWiki fixes stabilization phase"}
+    [ordered]@{version=[Version]"0.3.11"; title="Test-Different"}
+    [ordered]@{version=[Version]"0.3.11.1"; title="Add more output to the robo and diff return codes"}
+    [ordered]@{version=[Version]"0.3.11.2"; title="AddResource_ToParent: Added Test-Path and create directory if not exists (which should exist anyway)"}
+    [ordered]@{version=[Version]"0.3.11.3"; title="Wrapped IO commands with CommandWithRetry to get around IO issues"}
+    [ordered]@{version=[Version]"0.3.11.4"; title="Fix: Problem in copy-robo, added more detailed output/logging"}
+    [ordered]@{version=[Version]"0.3.11.5"; title="Fix: Still failed remove-items, bumping RetryCount to 50!"}
+    [ordered]@{version=[Version]"0.3.12"; title="Logging in ViewModel_setDocFxHelperResourceHierarchy"}
+    [ordered]@{version=[Version]"0.3.12.1"; title="Remove-items got close to 50, bumping RetryCount to 99!"}
+    [ordered]@{version=[Version]"0.3.13"; title="New spec type ApiYaml"}
 )
 
-$script:DocFxHelperVersion = $DocFxHelperVersions[-1]
-Write-Host "DocFxHelper.ps1 Version [$($DocFxHelperVersion.Version)] $($DocFxHelperVersion.title)"
+$global:DocFxHelperVersion = $DocFxHelperVersions[-1]
+Write-Host "DocFxHelper.ps1 Version [$($global:DocFxHelperVersion.Version)] $($global:DocFxHelperVersion.title)"
 
 <#
   Normal mode:
@@ -277,8 +286,8 @@ function Copy-Robo
   {
     $cmd = "robocopy"    
     $a = @()
-    $a += $source
-    $a += $destination
+    $a += "$source"
+    $a += "$destination"
 
     if ($Mirror) { $a += "/MIR" }
     if ($ShowFullPath) { $a += "/FP" }
@@ -299,23 +308,120 @@ function Copy-Robo
 
   Write-Host "Running $cmd $($a -join " ")"
   $res = & $cmd @a
+  Write-Host "Checking the $cmd's return code [$LastExitCode]"
+  $resString = $res | out-string
   if ($cmd -eq "robocopy")
-  {
+  {    
     if ($LastExitCode -gt 7)
     {
-      Write-Error ($res | out-string)
+      Write-Error $resString
+    }
+    else
+    {
+      Write-Verbose $resString
     }
   }elseif ($cmd -eq "rsync")
   {
     if ($LastExitCode -ne 0)
     {
-      Write-Error ($res | out-string)
+      Write-Error $resString
+    }
+    else
+    {
+      Write-Verbose $resString
     }
   }
+  Write-Host "Finished running $cmd $($a -join " "): result code [$LastExitCode]"
   $LastExitCode = 0
-  Write-Host "Finished running $cmd $($a -join " ")"
 
 }
+
+function Test-Different
+{
+  param(
+    [Parameter(Mandatory)]$source,
+    [Parameter(Mandatory)]$destination
+  )
+
+  $cmd = $null
+  $a = @()
+
+  $destinationParentFolder = (Split-Path $destination)
+  if (Test-Path $destinationParentFolder)
+  {
+    Write-Debug "Parent folder $destinationParentFolder already exists"
+  }
+  else
+  {
+    Write-Debug "Parent folder $destinationParentFolder not found, creating"
+    New-Item $destinationParentFolder -ItemType Directory -Force
+  }
+  
+  Write-Debug "Platform: [$($PSVersionTable.Platform)]"
+
+  if ("$($PSVersionTable.Platform)" -eq "Unix")
+  {
+    $cmd = "diff"
+    # --exclude=PATTERN    
+    
+    $a += "--recursive"
+    
+    $sourceItem = Get-Item $source
+    if ($sourceItem.PSIsContainer)
+    {
+      if (!"$($source)".EndsWith("/"))
+      {
+        $source = "$($source)/"
+      }
+      if (!"$destination".EndsWith("/"))
+      {
+        $destination = "$($destination)/"
+      }
+    }
+    $a += $source
+    $a += $destination
+
+  }
+  else
+  {
+    $cmd = "robocopy"
+    $a = @("$source", "$destination", "/MIR", "/L", "/NS", "/NC", "/NFL", "/NDL", "/NP", "/NJH")
+  }
+
+  Write-Host "Running Command [$cmd] $($a -join " ")"
+
+  $res = & $cmd @a
+
+  Write-Host "Command [$cmd] executed, checking return codes"
+
+  $res = $null
+  if ($cmd -eq "robocopy")
+  {
+    if ($LASTEXITCODE -eq 0)
+    {
+      $res = $false
+    }elseif ($LASTEXITCODE -lt 8)
+    {
+      $res = $true
+    }
+
+  }elseif ($cmd -eq "diff")
+  {
+    if ($LastExitCode -eq 0)
+    {
+      $res = $false
+    }elseif ($LASTEXITCODE -eq 1)
+    {
+      $res = $true
+    }
+
+  }
+  Write-Host "Finished running $cmd $($a -join " "): Exit code $($LASTEXITCODE)"
+  Write-Host "Source different? $($res)"
+  $LastExitCode = 0
+  return $res
+}
+
 function script:Get-DocFxHelperResourcePageUidPrefix
 {
   param($Target)
@@ -882,8 +988,6 @@ function Add-DocFxHelperResource
   }
   
   ViewModel_setDocFxHelperResourceHierarchy -ResourceViewModel $resource
-  
-  # $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
 
 }
 
@@ -1029,7 +1133,20 @@ function script:ViewModel_setDocFxHelperResourceHierarchy
     Write-Verbose "Resource [$($ResourceViewModel.id)] is the root and doesn't need a parent toc.yml"
   }
 
-  $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
+  $docfxhelper_json=$null
+  if ($DocFxHelperFiles.docfxhelper_json)
+  {
+    Write-Verbose "Using docfxhelper.json from `$DocFxHelperFiles.docfxhelper_json"
+    $docfxhelper_json = $DocFxHelperFiles.docfxhelper_json
+  }
+  else
+  {
+    Write-Verbose "Using docfxhelper.json from docfx.json path"
+    $docfxhelper_json = (join-path (split-Path $DocFxHelper.docFx.Path) -ChildPath "docfxhelper.json")
+  }
+  
+  Write-verbose "docfxhelper.json: [$($docfxhelper_json)]"
+  $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content $docfxhelper_json
 }
 
 function script:AddResource_ToParent
@@ -1203,7 +1320,14 @@ function script:AddResource_ToParent
     $tocItem  | ConvertTo-Yaml -depth 10
   #>
   
+  Write-Debug "ParentTocYml: [$($ParentTocYml)]"
   Push-Location (Split-Path $ParentTocYml)
+  Write-Debug "ResourcePath: [$($ResourcePath)]"
+  if (!(Test-Path $ResourcePath))
+  {
+    Write-Debug "ResourcePath: [$($ResourcePath)] - not found !??? - Creating regardless"
+    New-Item $ResourcePath -ItemType Directory
+  }
   $ResourceRelativePath = (Resolve-Path $ResourcePath -relative)
   Pop-location
   if ($ParentTocYmlIsRoot)
@@ -2171,42 +2295,50 @@ function script:AdoWiki_UpdateLinksToMdLinks
       display = $in.display
       link    = $in.link
     }
-    $testUri = [Uri]::new($baseUri, $out.link)
 
-    if ($testUri.Host -ne $baseUri.Host)
+    if ($out.link.StartsWith("#tab/"))
     {
-      Write-Debug "    ignored $($out.link) - is external"
+      Write-Debug "    link ($($out.link)) is a DocFx tab header, leaving as is"
     }
     else
     {
-      if ($testUri.Segments -contains ".attachments/")
+      $testUri = [Uri]::new($baseUri, $out.link)
+
+      if ($testUri.Host -ne $baseUri.Host)
       {
-        Write-Debug "    ignored $($out.link) - links to an image"
+        Write-Debug "    ignored ($($out.link)) - is external"
       }
       else
       {
-        if ($testUri.LocalPath.EndsWith(".md"))
+        if ($testUri.Segments -contains ".attachments/")
         {
-          Write-Debug "    ignored $($out.link) already points to a .md file"
-        }
-        elseif ($AllMdFiles -contains $testUri.AbsolutePath)
-        {
-          Write-Debug "    link $($out.link), found an .md file, appending .md"
-          $out.link = "$($testUri.AbsolutePath).md$($testUri.Query)$($testUri.Fragment)"
+          Write-Debug "    ignored ($($out.link)) - links to an image"
         }
         else
-        {          
-          $PageUri = [Uri]::new($baseUri, $MdFileMetadata.DocFxSafe.LinkAbsolute)
-          $pageRelativeLink = [Uri]::new($pageUri, $out.link)
-          
-          if ($AllMdFiles -contains $pageRelativeLink.AbsolutePath -or $AllMdFiles -contains "$($pageRelativeLink.AbsolutePath).md")
+        {
+          if ($testUri.LocalPath.EndsWith(".md"))
           {
-            Write-Debug "    link $($out.link) is relative to an existing .md, using [$($pageRelativeLink.AbsolutePath).md]"
-            $out.link = "$($pageRelativeLink.AbsolutePath).md$($pageRelativeLink.Query)$($pageRelativeLink.Fragment)"
+            Write-Debug "    ignored ($($out.link)) already points to a .md file"
+          }
+          elseif ($AllMdFiles -contains $testUri.AbsolutePath)
+          {
+            Write-Debug "    link ($($out.link)), found an .md file, appending .md"
+            $out.link = "$($testUri.AbsolutePath).md$($testUri.Query)$($testUri.Fragment)"
           }
           else
-          {
-            Write-Debug "    link $($out.link) doesn't seem to correspond to an existing .md file, leaving as is"
+          {          
+            $PageUri = [Uri]::new($baseUri, $MdFileMetadata.DocFxSafe.LinkAbsolute)
+            $pageRelativeLink = [Uri]::new($pageUri, $out.link)
+            
+            if ($AllMdFiles -contains $pageRelativeLink.AbsolutePath -or $AllMdFiles -contains "$($pageRelativeLink.AbsolutePath).md")
+            {
+              Write-Debug "    link ($($out.link)) is relative to an existing .md, using [$($pageRelativeLink.AbsolutePath).md]"
+              $out.link = "$($pageRelativeLink.AbsolutePath).md$($pageRelativeLink.Query)$($pageRelativeLink.Fragment)"
+            }
+            else
+            {
+              Write-Debug "    link ($($out.link)) doesn't seem to correspond to an existing .md file, leaving as is"
+            }
           }
         }
       }
@@ -2251,36 +2383,42 @@ function script:AdoWiki_UpdateRenamedLinks
       link    = $in.link
     }
 
-
-    $testUri = [Uri]::new($baseUri, $out.link)
-
-    if ($testUri.Host -ne $baseUri.Host)
+    if ($out.link.StartsWith("#tab/"))
     {
-      Write-Debug "ignored $($out.link) - is external"
+      Write-Debug "ignored $($out.link) - is DocFx Tab header"
     }
     else
     {
-      if ($testUri.Segments -contains ".attachments/")
+      $testUri = [Uri]::new($baseUri, $out.link)
+
+      if ($testUri.Host -ne $baseUri.Host)
       {
-        Write-Debug "ignored $($out.link) - links to an image"
-      }
-      elseif ($testUri.LocalPath -eq "/" -and "$($testUri.Anchor)" -ne "")
-      {
-        Write-Debug "ignored $($out.link) - links to anchor"
+        Write-Debug "ignored $($out.link) - is external"
       }
       else
       {
-        $matchedMap = $Map | where-object { $_.from.LinkAbsoluteMd -eq $testUri.AbsolutePath -or $_.from.LinkAbsoluteMd -eq "$($testUri.AbsolutePath).md" }
-        if ($matchedMap)
+        if ($testUri.Segments -contains ".attachments/")
         {
-          Write-Debug "Found a link to a renamed map item From: [$($matchedMap.from.LinkAbsoluteMd)] To: [$($matchedMap.to.LinkAbsoluteMd)].  Updating link"
-          $newUri = $matchedMap.to.LinkAbsoluteMd
-
-          $out.link = "$($newUri)$($testUri.Query)$($testUri.Fragment)"
+          Write-Debug "ignored $($out.link) - links to an image"
+        }
+        elseif ($testUri.LocalPath -eq "/" -and "$($testUri.Anchor)" -ne "")
+        {
+          Write-Debug "ignored $($out.link) - links to anchor"
         }
         else
         {
-          Write-Debug "Leaving $($out.link) as is"
+          $matchedMap = $Map | where-object { $_.from.LinkAbsoluteMd -eq $testUri.AbsolutePath -or $_.from.LinkAbsoluteMd -eq "$($testUri.AbsolutePath).md" }
+          if ($matchedMap)
+          {
+            Write-Debug "Found a link to a renamed map item From: [$($matchedMap.from.LinkAbsoluteMd)] To: [$($matchedMap.to.LinkAbsoluteMd)].  Updating link"
+            $newUri = $matchedMap.to.LinkAbsoluteMd
+
+            $out.link = "$($newUri)$($testUri.Query)$($testUri.Fragment)"
+          }
+          else
+          {
+            Write-Debug "Leaving $($out.link) as is"
+          }
         }
       }
     }
@@ -2321,6 +2459,7 @@ function script:AdoWiki_UpdateLinksToAbsoluteLinks
       $in.link = "#Anchor"
       $in.link = "/With%20Space/With%20Space%20Too.md?q1=v1&q2=v2#FragmentName"
       $in.link = "/With Space/With Space Too.md?q1=v1&q2=v2#FragmentName"
+      $in.link = "#tab/foo" --> special link anchor syntax to DocFx Tabs
       $in.display = Read-Host "Display"
       $in.link = Read-Host "Link"
     #>
@@ -2331,17 +2470,24 @@ function script:AdoWiki_UpdateLinksToAbsoluteLinks
 
     Write-Debug "[$($out.display)]($($out.link))"
 
-    $linkUri = [Uri]::new($PageUri, $out.link)
-    if ($linkUri.AbsoluteUri -ne $out.link)
+    if ($out.link.startsWith("#tab/"))
     {
-      $out.link = "$($linkUri.PathAndQuery)$($linkUri.Fragment)"
-      Write-Debug "Converting to absolute: [$($out.link)]"
+      Write-Debug "DocFx Tab Header link #tab/foo - leaving it as is"
     }
     else
     {
-      Write-Debug "Leaving link [$($out.link)] as is"
+      $linkUri = [Uri]::new($PageUri, $out.link)
+      if ($linkUri.AbsoluteUri -ne $out.link)
+      {
+        $out.link = "$($linkUri.PathAndQuery)$($linkUri.Fragment)"
+        Write-Debug "Converting to absolute: [$($out.link)]"
+      }
+      else
+      {
+        Write-Debug "Leaving link [$($out.link)] as is"
+      }
     }
-    
+
     $ret = "$($in.include)[$($out.display)]($($out.link))"
     return $ret
 
@@ -2380,6 +2526,7 @@ function script:AdoWiki_UpdateLinksToRelativeLinks
       $in.link = "#Anchor"
       $in.link = "/With%20Space/With%20Space%20Too.md?q1=v1&q2=v2#FragmentName"
       $in.link = "/With Space/With Space Too.md?q1=v1&q2=v2#FragmentName"
+      $in.link = "#tab/foo" --> special link anchor syntax to DocFx Tabs
       $in.display = Read-Host "Display"
       $in.link = Read-Host "Link"
     #>
@@ -2687,6 +2834,11 @@ function New-DocFx
 
   process
   {
+    if (!(Test-Path $Target))
+    {
+      Write-Verbose "Path [$($Target)] not found, creating"
+      [void](New-Item $Target -ItemType Directory -Force)
+    }
     $docfx_json = join-path $Target -ChildPath "docfx.json"
     Write-Debug "docfx will be [$($docfx_json)]"
 
@@ -2712,7 +2864,8 @@ function New-DocFx
           $Destination = Join-Path $Target.FullName -ChildPath $template
           Write-Host "DocFx Template [$template] found, copying to [$Destination]"
           #& robocopy $templatePath $Destination /MIR
-          Copy-Robo -Source $templatePath -Destination $Destination -Mirror -ShowFullPath -Verbose
+          Invoke-CommandWithRetry {Copy-Robo -Source $templatePath -Destination $Destination -Mirror -ShowFullPath -Verbose} -RetryCount 99 -TimeoutInSecs 5
+          
         }
         else
         {
@@ -2732,14 +2885,6 @@ function New-DocFx
       }
       all = @()
     }
-
-    if ($DebugPreference -eq 'Continue')
-    {
-      Write-Debug "DocFxHelper.json:"
-      $DocFxHelper | ConvertTo-Json -Depth 4 | Write-Debug
-    }
-
-    $DocFxHelper | ConvertTo-Json -Depth 4 | Set-Content (join-path $Target -ChildPath "docfxhelper.json")
 
   }
 
@@ -3693,6 +3838,104 @@ function Add-RestApi
   return $DocFxHelper
 }
 
+function Add-ApiYaml
+{
+  param(
+    [Parameter(Mandatory)][System.IO.DirectoryInfo]$Path,
+    [Parameter(Mandatory)][string]$Id,
+    [string]$Target,
+    [string]$MenuParentItemName,
+    [string]$MenuDisplayName,
+    [int]$MenuPosition = -1,
+    [string]$MenuUid,
+    [string[]]$Excludes,
+    [string[]]$Medias,
+    [string]$ParentId
+  )
+
+  Write-Debug "----------------------------------------------"
+  Write-Debug "[$($MyInvocation.MyCommand.Name)]"
+  Write-Debug "Path:     [$Path]"
+  Write-Debug "Id:       [$Id]"
+
+  Push-Location (split-path $DocFxHelper.docFx.Path)
+  
+  Write-Debug "----------------------------------------------"
+  Write-Host "Prepare ViewModel $Path"
+  $a = @{
+    ResourceType       = [ResourceType]::Api
+    Id                 = $Id
+    Path               = $Path.FullName    
+    Target             = $Target
+    MenuParentItemName = $MenuParentItemName
+    MenuDisplayName    = $MenuDisplayName
+    MenuPosition       = $MenuPosition
+    MenuUid            = $MenuUid
+    Medias             = $Medias
+    ParentId           = $ParentId
+  }
+  $viewModel = ViewModel_getGenericResourceViewModel @a
+  
+  
+  Write-Debug "----------------------------------------------"
+  Write-Debug "Add Resource ViewModel to DocFxHelper"
+  Add-DocFxHelperResource -Resource $viewModel
+  
+  if ($viewModel.Id -eq $viewModel.ParentId)
+  {
+    Write-Debug "----------------------------------------------"
+    Write-Host  "This is the root resource - no child to add to a parent toc.yml"
+  }
+  else
+  {
+    if ("$($viewModel.menuDisplayName)" -eq "") {
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Resource $($viewModel.id) doesn't not specify a Menu Display (-MenuDisplayName), so the resource won't be added to the parent toc.yml"
+    }
+    else{
+      Write-Debug "----------------------------------------------"
+      Write-Host  "Adding $($viewModel.menuDisplayName) to parent [$($viewModel.parentToc_yml)]"
+  
+      AddResource_ToParent `
+        -ParentTocYml $viewModel.parentToc_yml `
+        -ParentTocYmlIsRoot $viewModel.parentToc_yml_isRoot `
+        -ResourcePath $viewModel.Path `
+        -MenuParentItemName $viewModel.MenuParentItemName `
+        -MenuDisplayName $viewModel.MenuDisplayName `
+        -MenuPosition $viewModel.menuPosition `
+        -HomePage $viewModel.homepage `
+        -MenuUid $viewModel.MenuUid
+    }
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host  "Fix Toc Items that should point to their folder instead of their .md"  
+  DocFx_FixTocItemsThatShouldPointToTheirFolderInstead -Path $viewModel.Path
+  
+  $apiYamlMeta = [ordered]@{
+    Build = [ordered]@{
+      Content      = [ordered]@{
+          files = @("**/*.yaml", "**/*.yml")
+          src   = (Resolve-Path $Path.FullName -Relative)
+      }
+    }
+  }
+
+  if ($viewModel.Target -ne "/")
+  {
+    $apiYamlMeta.Build.Content.dest = ($viewModel.Target -split "/" | where-object {$_}) -join "/"
+  }
+
+  Write-Debug "----------------------------------------------"
+  Write-Host "Adding Resource to DocFx.json"
+  DocFx_AddViewModel -Path $DocFxhelper.docFx.Path -Meta $apiYamlMeta
+  
+  Write-Host "[$($MyInvocation.MyCommand.Name)] Done"
+
+  pop-location
+  return $DocFxHelper
+}
+
 function ConvertTo-DocFxConceptual
 {
   param(
@@ -4169,7 +4412,7 @@ function Get-DocFxBuildLogViewModel
 
   $vm = [ordered]@{
     DocFxVersion = "$(((& docfx --version) -split "\+")[0] )"
-    DocFxHelperVersion = "$($DocFxHelperVersion)"
+    DocFxHelperVersion = "$($global:DocFxHelperVersion)"
     GeneratedDateTime = "$((Get-Date))"
     StartedAt = $docfxBuildResult[0].date_time.ToString("hh:mm:ss")
     FinishedAt = $docfxBuildResult[-1].date_time.ToString("hh:mm:ss")

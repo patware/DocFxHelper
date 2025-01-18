@@ -1,12 +1,13 @@
-# kubectl apply -f site-pv.yaml
-# kubectl delete -f site-pv.yaml
+# kubectl apply -f publisher-site-pv.yaml
+# kubectl delete -f publisher-site-pv.yaml
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   labels:
-    io.kompose.service: site-pv
+    app: docfxhelper
+    tier: publisher
     type: local
-  name: site-pv
+  name: publisher-site-pv
 spec:
   capacity:
     storage: 5Gi
@@ -17,4 +18,3 @@ spec:
   storageClassName: hostpath
   hostPath:
     path: /run/desktop/mnt/host/c/dev/docfxhelper/Site
-  
