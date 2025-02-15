@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 
 namespace DocFxHelper.Specification
 {
+  /// <summary>
+  /// Represents the specs for integrating a PowerShell Module in the Doc site
+  /// </summary>
   public class DocSpecPowershellModule : DocSpecResource
   {
     public string? Psd1 { get; set; }
@@ -14,10 +17,17 @@ namespace DocFxHelper.Specification
     {
       var spec = new DocFxHelper.Specification.DocSpecPowershellModule()
       {
-        Id = "DocSpecWiki",
-        Name = "DocSpec Wiki",
-        IsRoot = true,
+        Id = "MyPsModule",
+        Name = "MyPsModule Powershell Module",
         Homepage = "index.md",
+        ParentId = "ParentId",
+        Target = "/PS/MyPsModule",
+        MenuParentItemName = "Some Suite",
+        MenuDisplayName = "MyPsModule",
+        MenuPosition = -1,
+        MenuUid = "myPsModule_index",
+        Excludes = [],
+        Medias = [],
         Psd1 = "MyPsModule.psd1"
       };
 

@@ -14,13 +14,12 @@ namespace DocFxHelper.Specification
     public string? Name { get; set; }
     public string? ParentId { get; set; }
     public string Target { get; set; } = "/";
-    public bool IsRoot { get; set; }
     public string? MenuParentItemName { get; set; }
     public string? MenuDisplayName { get; set; }
     public int MenuPosition { get; set; } = -1;
     public string? Homepage { get; set; }
     public string? MenuUid { get; set; }
-    public string[] Excludes { get; set; } = Array.Empty<string>();
-    public string[] Medias { get; set; } = Array.Empty<string>();
+    public string[] Excludes { get; set; } = [];
+    public string[] Medias { get; set; } = [];
   }
 }
