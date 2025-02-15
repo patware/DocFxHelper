@@ -1,0 +1,17 @@
+{
+  "type": "DotnetApi",
+  "Id": "MyApi",
+  "Name": "MyApi Dotnet Api",
+  "ParentId": "ParentId",
+  "Target": "/Apis/MyApi",
+  "MenuParentItemName": "Some Suite",
+  "MenuDisplayName": "My API",
+  "MenuPosition": -1,
+  "Homepage": "index.md",
+  "MenuUid": "myApi_index",
+  "Excludes": [
+    "obj/**",
+    "bin/**"
+  ],
+  "Medias": []
+}

@@ -1,0 +1,19 @@
+{
+  "type": "Conceptual",
+  "Id": "MyOtherProduct",
+  "Name": "My Other Product Conceptual",
+  "ParentId": "ParentId",
+  "Target": "/Products/Flaghsip/MyOtherProduct",
+  "MenuParentItemName": "Flagship Suite",
+  "MenuDisplayName": "My Other Product",
+  "MenuPosition": -1,
+  "Homepage": "index.md",
+  "MenuUid": "my_other_product_index",
+  "Excludes": [
+    "docfx.json"
+  ],
+  "Medias": [
+    "images/**",
+    "videos/**"
+  ]
+}

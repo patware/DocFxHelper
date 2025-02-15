@@ -1,0 +1,14 @@
+{
+  "type": "DotnetApiYaml",
+  "Id": "MyOtherApi",
+  "Name": "MyOtherApi Dotnet Api Yaml",
+  "ParentId": "ParentId",
+  "Target": "/Apis/MyOtherApi",
+  "MenuParentItemName": "Some Suite",
+  "MenuDisplayName": "My Other API",
+  "MenuPosition": -1,
+  "Homepage": "index.md",
+  "MenuUid": "myOtherApi_index",
+  "Excludes": [],
+  "Medias": []
+}

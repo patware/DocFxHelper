@@ -1,0 +1,5 @@
+{
+  "type": "Info",
+  "DocFx_Json": "my.docfx.json",
+  "MoveToSubfolder": true
+}

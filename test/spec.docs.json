@@ -1,0 +1,22 @@
+{
+  "type": "AdoWiki",
+  "IsRoot": false,
+  "WikiUrl": "https://dev.azure.com/MyOrg/MyProject/_wiki/wikis/MyProduct.wiki/1/my_product_homepage",
+  "Id": "MyProduct",
+  "Name": "My Product Ado Wiki",
+  "ParentId": "ParentId",
+  "Target": "/Products/Flaghsip/MyProduct",
+  "MenuParentItemName": "Flagship Suite",
+  "MenuDisplayName": "My Product",
+  "MenuPosition": -1,
+  "Homepage": "my_product_homepage.md",
+  "MenuUid": "my_product_homepage",
+  "Excludes": [
+    "bla",
+    "settings"
+  ],
+  "Medias": [
+    "images/**",
+    "videos/**"
+  ]
+}

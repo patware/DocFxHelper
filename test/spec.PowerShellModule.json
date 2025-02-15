@@ -1,0 +1,15 @@
+{
+  "type": "PowerShellModule",
+  "Psd1": "MyPsModule.psd1",
+  "Id": "MyPsModule",
+  "Name": "MyPsModule Powershell Module",
+  "ParentId": "ParentId",
+  "Target": "/PS/MyPsModule",
+  "MenuParentItemName": "Some Suite",
+  "MenuDisplayName": "MyPsModule",
+  "MenuPosition": -1,
+  "Homepage": "index.md",
+  "MenuUid": "myPsModule_index",
+  "Excludes": [],
+  "Medias": []
+}

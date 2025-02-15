@@ -1,0 +1,14 @@
+{
+  "type": "RestApi",
+  "Id": "MyRestApi",
+  "Name": "MyRestApi Rest Api",
+  "ParentId": "ParentId",
+  "Target": "/Apis/MyRestApi",
+  "MenuParentItemName": "REST API Suite",
+  "MenuDisplayName": "My REST API",
+  "MenuPosition": -1,
+  "Homepage": "index.md",
+  "MenuUid": "myRestApi_index",
+  "Excludes": [],
+  "Medias": []
+}
