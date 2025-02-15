@@ -8,6 +8,22 @@
       "commandName": "Project",
       "commandLineArgs": "init"
     },
+    "DocFxHelper.CLI init -h": {
+      "commandName": "Project",
+      "commandLineArgs": "init -h"
+    },
+    "DocFxHelper.CLI init Main": {
+      "commandName": "Project",
+      "commandLineArgs": "init Main"
+    },
+    "DocFxHelper.CLI init AdoWiki": {
+      "commandName": "Project",
+      "commandLineArgs": "init AdoWiki"
+    },
+    "DocFxHelper.CLI init PowershellModule": {
+      "commandName": "Project",
+      "commandLineArgs": "init PowershellModule"
+    },
     "DocFxHelper.CLI initReversed": {
       "commandName": "Project",
       "commandLineArgs": "init-reversed"

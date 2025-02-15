@@ -30,17 +30,18 @@ namespace DocFxHelper.CLI.Commands
     public async Task<int> RunAsync()
     {
       _logger.LogInformation("InitReversed starting");
-      _logger.LogInformation("specMain.json");
-      var specMainString = await System.IO.File.ReadAllTextAsync("specMain.json");
-      var specMain = System.Text.Json.JsonSerializer.Deserialize<DocFxHelper.Specification.DocSpec>(specMainString);
 
-      _logger.LogInformation("specAdoWiki.json");
-      var specAdoWikiString = await System.IO.File.ReadAllTextAsync("specAdoWiki.json");
-      var specAdoWiki = System.Text.Json.JsonSerializer.Deserialize<DocFxHelper.Specification.DocSpec>(specAdoWikiString);
+      var spec_json_files = System.IO.Directory.GetFiles(System.Environment.CurrentDirectory, "spec*.json");
 
-      _logger.LogInformation("specPsModule.json");
-      var specPsModuleString = await System.IO.File.ReadAllTextAsync("specPsModule.json");
-      var specPsModule = System.Text.Json.JsonSerializer.Deserialize<DocFxHelper.Specification.DocSpec>(specPsModuleString);
+      _logger.LogInformation("Found {fileCount} spec*.json to Deserialize", spec_json_files.Length);
+
+      foreach(var spec_json_file in spec_json_files)
+      {
+        var fi = new System.IO.FileInfo(spec_json_file);
+        var specMainString = await System.IO.File.ReadAllTextAsync(spec_json_file);
+        var specMain = System.Text.Json.JsonSerializer.Deserialize<DocFxHelper.Specification.DocSpec>(specMainString);
+        _logger.LogInformation("{file} type is {specType}", fi.Name, specMain!.GetType());
+      }
 
       _logger.LogInformation("InitReversed finished");
       return 0;

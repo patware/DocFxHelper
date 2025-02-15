@@ -10,5 +10,17 @@ namespace DocFxHelper.Specification
   {
     public string? DocFx_Json { get; set; }
     public bool MoveToSubfolder { get; set; }
+
+    public static DocSpecMain Init()
+    {
+      var spec = new DocSpecMain()
+      {
+        DocFx_Json = "my.docfx.json",
+        MoveToSubfolder = true
+      };
+
+      return spec;
+    }
+
   }
 }

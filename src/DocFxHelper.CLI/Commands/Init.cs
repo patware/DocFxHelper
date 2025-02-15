@@ -21,12 +21,20 @@ namespace DocFxHelper.CLI.Commands
 
     public Command GetCommand()
     {
+
+      var specTypeArgument = new Argument<DocFxHelper.Specification.Enums.DocSpecType>(
+        name: "SpecType",
+        description: "The type of spec to generate"
+      );
+
       var cmd = new Command("init", "Initialize Spec");
-      cmd.SetHandler(async() => await RunAsync());
+      cmd.AddArgument(specTypeArgument);
+
+      cmd.SetHandler(async (specType) => { await RunAsync(specType); }, specTypeArgument);
       return cmd;
     }
 
-    public async Task RunAsync()
+    public async Task RunAsync(DocFxHelper.Specification.Enums.DocSpecType specType)
     {
       _logger.LogInformation("Init starting");
 
@@ -35,40 +43,46 @@ namespace DocFxHelper.CLI.Commands
         WriteIndented = true
       };
 
-      _logger.LogInformation("specMain.json");
-      var specMain = new DocFxHelper.Specification.DocSpecMain()
+      var specName_json = $"spec{specType}.json";
+      _logger.LogInformation(specName_json);
+
+      DocFxHelper.Specification.DocSpec? spec;
+
+      switch (specType)
       {
-        DocFx_Json = "docfx.json",
-        MoveToSubfolder = true
-      };
-      await System.IO.File.WriteAllTextAsync("specMain.json", System.Text.Json.JsonSerializer.Serialize<DocFxHelper.Specification.DocSpec>(specMain, jsonOptions));
+        case Specification.Enums.DocSpecType.Main:
+          {
+            spec = DocFxHelper.Specification.DocSpecMain.Init();
+            break;
+          }
 
-      _logger.LogInformation("specAdoWiki.json");
-      var specAdoWiki = new DocFxHelper.Specification.DocSpecAdoWiki()
+        case Specification.Enums.DocSpecType.AdoWiki:
+          {
+            spec = DocFxHelper.Specification.DocSpecAdoWiki.Init();
+            break;
+          }
+
+        case Specification.Enums.DocSpecType.PowerShellModule:
+          {
+
+            spec = DocFxHelper.Specification.DocSpecPowershellModule.Init();
+
+            break;
+          }
+
+        default:
+          {
+            spec = new Specification.DocSpec();
+            break;
+          }
+      }
+
+      if (spec != null)
       {
-        Id = "DocSpecWiki",
-        Name = "DocSpec Wiki",
-        IsRoot = true,
-        Homepage = "index.md",
-        WikiUrl = "https://dev.azure.com/MyOrg/MyProject/_wiki/wikis/MyProject.wiki/1/MyPage"
-      };
-
-      await System.IO.File.WriteAllTextAsync("specAdoWiki.json", System.Text.Json.JsonSerializer.Serialize<DocFxHelper.Specification.DocSpec>(specAdoWiki, jsonOptions));
-
-      _logger.LogInformation("specPsModule.json");
-      var specPsModule = new DocFxHelper.Specification.DocSpecPowershellModule()
-      {
-        Id = "DocSpecWiki",
-        Name = "DocSpec Wiki",
-        IsRoot = true,
-        Homepage = "index.md",
-        Psd1 = "MyPsModule.psd1"
-      };
-
-      await System.IO.File.WriteAllTextAsync("specPsModule.json", System.Text.Json.JsonSerializer.Serialize<DocFxHelper.Specification.DocSpec>(specPsModule, jsonOptions));
+        await System.IO.File.WriteAllTextAsync(specName_json, System.Text.Json.JsonSerializer.Serialize<DocFxHelper.Specification.DocSpec>(spec, jsonOptions));
+      }
 
       _logger.LogInformation("Init finished");
-
     }
   }
 }
