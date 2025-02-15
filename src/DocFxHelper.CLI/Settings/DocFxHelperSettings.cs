@@ -10,6 +10,6 @@ namespace DocFxHelper.CLI.Settings
   {
     public const string SectionName = "DocFxHelper";
 
-    public int SomeProperty { get; set; } = 51;
+    public bool ShowTips { get; set; } = true;
   }
 }
