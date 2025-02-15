@@ -1,0 +1,17 @@
+{
+  "profiles": {
+    "DocFxHelper.CLI -h": {
+      "commandName": "Project",
+      "commandLineArgs": "-h"
+    },
+    "DocFxHelper.CLI init": {
+      "commandName": "Project",
+      "commandLineArgs": "init"
+    },
+    "DocFxHelper.CLI initReversed": {
+      "commandName": "Project",
+      "commandLineArgs": "init-reversed"
+    }
+
+  }
+}

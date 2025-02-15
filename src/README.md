@@ -15,6 +15,96 @@ Each resource type requires a json specification file (specs.docs.json) that con
 | PowershellModule | PowerShell Module             | Source code (psm1, psd1, ps1)                            |
 | Conceptual       | Classic Docfx conceptual site | All md, yaml, and media files, the docfx.json is ignored |
 
+## Graph
+
+```mermaid
+flowchart LR
+    subgraph Main
+        MainDocFxJson[Starter DocFx.Json]
+        DocFxTemplates[DocFx Templates]
+        DryRunMustache[DryRun Mustache]
+    end
+    subgraph ChildAdoWiki
+        ChildAdoWikiSpecs[Specs.docs.json]
+        ChildAdoWikiMarkdowns[Ado Wiki files]
+        ChildAdoWikiOrders[.order]
+        ChildAdoWikiMustache[Mustache]
+    end
+    subgraph ChildAdoWikiConverted
+        ChildAdoWikiConvertedMd[Markdown files]
+        ChildAdoWikiConvertedToc[toc.yml files]
+        ChildAdoWikiDynamic[Mustache generated]
+    end
+
+    subgraph MainAdoWiki
+        MainAdoWikiSpecs[Specs.docs.json]
+        MainAdoWikiMarkdowns[Ado Wiki files]
+        MainAdoWikiOrders[.order]
+        MainAdoWikiMustache[Mustache]
+    end
+    subgraph MainAdoWikiConverted
+        MainAdoWikiConvertedMd[Markdown files]
+        MainAdoWikiConvertedToc[toc.yml files]
+        MainAdoWikiDynamic[Mustache generated]
+    end
+    DryRunDocFxJson[Dryrun docfx.json]
+    RunDocFxJson[docfx.json]
+    
+    subgraph DryRun
+        DryRunSite[_site]
+        DryRunLogs[Logs]
+    end
+
+    subgraph Run
+        RunSite[_site]
+        RunLogs[Logs]
+    end
+
+    RunDynamic[Post DryRun Mustache generated]
+
+    AllSpecsDocsJson[All.specs.docs.json]
+
+    DocFxHelperTemplate[DocFxHelper Template]
+
+    MainAdoWikiSpecs --DocFxHelper--> AllSpecsDocsJson
+    ChildAdoWikiSpecs --DocFxHelper--> AllSpecsDocsJson
+
+    AllSpecsDocsJson --DocFxHelper Mustache-->MainAdoWikiDynamic
+    AllSpecsDocsJson --DocFxHelper Mustache-->ChildAdoWikiDynamic
+
+    ChildAdoWikiMarkdowns --DocFxHelper Convert--> ChildAdoWikiConvertedMd
+    ChildAdoWikiOrders --DocFxHelper Convert--> ChildAdoWikiConvertedToc
+    ChildAdoWikiMustache --DocFxHelper Mustache-->ChildAdoWikiDynamic
+
+    MainAdoWikiMarkdowns --DocFxHelper Convert--> MainAdoWikiConvertedMd
+    MainAdoWikiOrders --DocFxHelper Convert--> MainAdoWikiConvertedToc
+    MainAdoWikiMustache --DocFxHelper Mustache-->MainAdoWikiDynamic
+
+    
+    ChildAdoWikiSpecs --DocFxHelper Assemble-->MainAdoWikiConvertedToc
+    ChildAdoWikiConverted --DocFxHelper Assemble-->DryRunDocFxJson
+    MainAdoWikiConverted --DocFxHelper Assemble-->DryRunDocFxJson
+
+    MainDocFxJson --DocFxHelper Generates--> DryRunDocFxJson
+    AllSpecsDocsJson --DocFxHelper Generates--> DryRunDocFxJson
+
+    DryRunDocFxJson --DocFx build-->DryRun
+    DocFxTemplates --DocFx build-->DryRun
+    DocFxHelperTemplate --DocFx build-->DryRun
+    MainAdoWikiConverted --DocFx build-->DryRun
+
+    DryRunDocFxJson --DocFxHelper--> RunDocFxJson
+    DryRunLogs --DocFxHelper Mustache-->RunDynamic
+
+    RunDynamic --DocFx build-->Run
+    RunDocFxJson --DocFx build-->Run
+    DocFxTemplates --DocFx build-->Run
+    DocFxHelperTemplate --DocFx build-->Run
+    MainAdoWikiConverted --DocFx build-->Run
+
+    RunSite --DocFxHelper Publish-->Site
+```
+
 ## Specs.docs.json
 
 Each resource is defined in a json file (specs.docs.json) and contains properties that are unique to each.
