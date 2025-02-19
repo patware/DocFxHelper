@@ -11,7 +11,7 @@ namespace DocFxHelper.Specification
   /// </summary>
   public class DocSpecAdoWiki : DocSpecResource
   {
-    public bool IsRoot { get; private set; }
+    public bool IsRoot { get; set; }
 
     public required string WikiUrl { get; set; }
 

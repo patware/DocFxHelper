@@ -14,6 +14,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocFxHelper.Specification",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocFxHelper.Processor", "src\DocFxHelper.Processor\DocFxHelper.Processor.csproj", "{969A8934-872A-4685-98C5-849342945213}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DocFxHelper.Domain", "src\DocFxHelper.Domain\DocFxHelper.Domain.csproj", "{636FD3EE-E7C8-4A47-91E3-C059B91A178A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,8 +34,15 @@ Global
 		{969A8934-872A-4685-98C5-849342945213}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{969A8934-872A-4685-98C5-849342945213}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{969A8934-872A-4685-98C5-849342945213}.Release|Any CPU.Build.0 = Release|Any CPU
+		{636FD3EE-E7C8-4A47-91E3-C059B91A178A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{636FD3EE-E7C8-4A47-91E3-C059B91A178A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{636FD3EE-E7C8-4A47-91E3-C059B91A178A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{636FD3EE-E7C8-4A47-91E3-C059B91A178A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3277C7B9-69B1-42C0-B68A-25DBFEDC767E}
 	EndGlobalSection
 EndGlobal

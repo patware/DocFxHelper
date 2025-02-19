@@ -36,6 +36,8 @@ builder.Services.Configure<DocFxHelper.CLI.Settings.DocFxHelperSettings>(
 
 builder.Services.RegisterCommands();
 
+builder.Services.AddSingleton<DocFxHelper.Processor.Convert.AdoWiki>();
+
 builder.Logging.ClearProviders();
 builder.Logging.AddNLog();
 

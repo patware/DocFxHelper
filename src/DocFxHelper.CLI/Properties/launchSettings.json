@@ -12,37 +12,23 @@
       "commandName": "Project",
       "commandLineArgs": "init -h"
     },
-    "DocFxHelper.CLI init Info": {
-      "commandName": "Project",
-      "commandLineArgs": "init Info"
-    },
-    "DocFxHelper.CLI init AdoWiki": {
-      "commandName": "Project",
-      "commandLineArgs": "init AdoWiki"
-    },
-    "DocFxHelper.CLI init DotnetApi": {
-      "commandName": "Project",
-      "commandLineArgs": "init DotnetApi"
-    },
-    "DocFxHelper.CLI init RestApi": {
-      "commandName": "Project",
-      "commandLineArgs": "init RestApi"
-    },
-    "DocFxHelper.CLI init PowershellModule": {
-      "commandName": "Project",
-      "commandLineArgs": "init PowershellModule"
-    },
-    "DocFxHelper.CLI init Conceptual": {
-      "commandName": "Project",
-      "commandLineArgs": "init Conceptual"
-    },
-    "DocFxHelper.CLI init DotnetApiYaml": {
-      "commandName": "Project",
-      "commandLineArgs": "init DotnetApiYaml"
-    },
     "DocFxHelper.CLI initReversed": {
       "commandName": "Project",
       "commandLineArgs": "init-reversed"
+    },
+    "DocFxHelper.CLI Convert": {
+      "commandName": "Project",
+      "commandLineArgs": "convert"
+    },
+    "DocFxHelper.CLI Convert test WikiMain": {
+      "commandName": "Project",
+      "commandLineArgs": "convert",
+      "workingDirectory": "D:\\github\\patware\\DocFxHelper\\test\\WikiMain\\out"
+    },
+    "DocFxHelper.CLI Convert WikiEdge": {
+      "commandName": "Project",
+      "commandLineArgs": "convert",
+      "workingDirectory": "D:\\docfxHelper\\WikiEdge.Current"
     }
 
   }

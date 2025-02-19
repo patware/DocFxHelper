@@ -16,6 +16,7 @@ namespace DocFxHelper.CLI.Commands
     {
       services.AddSingleton<Init>();
       services.AddSingleton<InitReversed>();
+      services.AddSingleton<Convert>();
       services.AddSingleton<Root>();
     }
 

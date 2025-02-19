@@ -30,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DocFxHelper.Processor\DocFxHelper.Processor.csproj" />
     <ProjectReference Include="..\DocFxHelper.Specification\DocFxHelper.Specification.csproj" />
   </ItemGroup>
 
