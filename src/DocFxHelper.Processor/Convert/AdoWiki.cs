@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace DocFxHelper.Processor.Convert
 {
@@ -11,18 +12,12 @@ namespace DocFxHelper.Processor.Convert
     {
       _logger.LogInformation("Convertion started for spec [{name}]", docSpec.Id);
 
-      var q = new System.Collections.Generic.Queue<DirectoryInfo>();
-
-      q.Enqueue(location);
+      Stack<DirectoryInfo> folderStack = GetStackOfFolders(location);
 
       do
       {
-        var current = q.Dequeue();
-        foreach (var subDir in current.GetDirectories())
-        {
-          q.Enqueue(subDir);
-        }
-
+        var current = folderStack.Pop();
+        
         RenameDirectoryToSafeName(current);
 
         var mdFiles = current.GetFiles("*.md");
@@ -30,48 +25,109 @@ namespace DocFxHelper.Processor.Convert
         foreach (var mdFile in mdFiles)
         {
           RenameMdFileToSafeName(mdFile);
+
+          if (mdFile.Name != "index.md")
+          {
+            await MoveMdFileToTheirSubFolder(mdFile);
+          }
         }
 
-      } while (q.Count > 0);
+        await CreateTocYmlFromDotOrder(current);
 
-      if (docSpec.IsRoot)
-      {
-        await MoveRootMdFilesToTheirSubFolder(location);
-      }
-
-      await Task.CompletedTask;
+      } while (folderStack.Count > 0);
 
       _logger.LogInformation("Convertion done for spec [{name}]", docSpec.Id);
 
       return 0;
-
     }
 
-    private async Task MoveRootMdFilesToTheirSubFolder(DirectoryInfo location)
+    private async Task CreateTocYmlFromDotOrder(DirectoryInfo location)
     {
-      var mdFiles = location.GetFiles("*.md");
+      var includeIndexMd = location.FullName != Directory.GetCurrentDirectory();
 
-      foreach(var mdFile in mdFiles.Where(f => f.Name != "index.md"))
+      var dotOrder = System.IO.Path.Combine(location.FullName, ".order");
+
+      if (!System.IO.File.Exists(dotOrder))
       {
-        var originalFileBaseName = System.IO.Path.GetFileNameWithoutExtension(mdFile.Name);
+        _logger.LogWarning("No .order file found in [{location}]", location.FullName);
+        return;
+      }
 
-        var mdSubFolder = new DirectoryInfo(System.IO.Path.Combine(location.FullName, originalFileBaseName));
+      _logger.LogDebug("Loading .order file from [{location}]", location.FullName);
+      var orderItems = await System.IO.File.ReadAllLinesAsync(dotOrder);
 
-        if (mdSubFolder.Exists)
+      var tocItems = new System.Collections.Generic.List<string>();
+
+      foreach (var item in orderItems)
+      {
+        if (item == "index" && !includeIndexMd)
         {
-          _logger.LogDebug("A folder with the md file's name exists, we're at the root and it's best to move it and rename it index.md");
-          string newMdFilename = GetMdFileNameInSubFolder(mdFile, originalFileBaseName, mdSubFolder);
+          continue;
+        }
 
-          if (newMdFilename != null && !string.IsNullOrEmpty(newMdFilename))
-          {
-            _logger.LogDebug("Moving root file [{mdFile}] to [{newMdFilename}]", mdFile.Name, newMdFilename);
-            mdFile.MoveTo(newMdFilename);
+        string? tocItem;
 
-            await SetDotOrderItemNewLocation(location, originalFileBaseName, mdSubFolder);
+        if (item.EndsWith('/'))
+        {
+          tocItem = $"- href: {item}";
+        }
+        else
+        {
+          tocItem = $"- href: {item}.md";
+        }
 
-            var newMdFileBaseName = System.IO.Path.GetFileNameWithoutExtension(newMdFilename);
-            await InsertNewItemInDotOrder(mdSubFolder, newMdFileBaseName);
-          }
+        tocItems.Add(tocItem);
+      }
+
+      var toc_Yml = System.IO.Path.Combine(location.FullName, "toc.yml");
+
+      await System.IO.File.WriteAllLinesAsync(toc_Yml, tocItems);
+    }
+
+    private static Stack<DirectoryInfo> GetStackOfFolders(DirectoryInfo location)
+    {
+      var folderStack = new Stack<DirectoryInfo>();
+      var folderQueue = new Queue<DirectoryInfo>();
+
+      folderQueue.Enqueue(location);
+
+      do
+      {
+        var current = folderQueue.Dequeue();
+
+        folderStack.Push(current);
+
+        foreach (var subFolder in current.GetDirectories())
+        {
+          folderQueue.Enqueue(subFolder);
+        }
+
+      } while (folderQueue.Count > 0);
+
+      return folderStack;
+    }
+
+    private async Task MoveMdFileToTheirSubFolder(FileInfo mdFile)
+    {
+      var location = mdFile.Directory!;
+      var originalFileBaseName = System.IO.Path.GetFileNameWithoutExtension(mdFile.Name);
+
+      var mdSubFolder = new DirectoryInfo(System.IO.Path.Combine(location.FullName, originalFileBaseName));
+
+      if (mdSubFolder.Exists)
+      {
+        _logger.LogDebug("A folder with the md file's name exists, we're at the root and it's best to move it and rename it index.md");
+        string newMdFilename = GetMdFileNameInSubFolder(mdFile, originalFileBaseName, mdSubFolder);
+
+        if (newMdFilename != null && !string.IsNullOrEmpty(newMdFilename))
+        {
+          _logger.LogDebug("Moving root file [{mdFile}] to [{newMdFilename}]", mdFile.Name, newMdFilename);
+          mdFile.MoveTo(newMdFilename);
+
+          await SetDotOrderItemNewLocation(location, originalFileBaseName, mdSubFolder);
+
+          var newMdFileBaseName = System.IO.Path.GetFileNameWithoutExtension(newMdFilename);
+          await InsertNewItemInDotOrder(mdSubFolder, newMdFileBaseName);
         }
       }
     }
