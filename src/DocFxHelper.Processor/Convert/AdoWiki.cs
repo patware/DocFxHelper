@@ -1,3 +1,6 @@
+using Markdig;
+using Markdig.Syntax.Inlines;
+using Markdig.Syntax;
 using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -6,18 +9,155 @@ namespace DocFxHelper.Processor.Convert
 {
   public class AdoWiki(ILogger<AdoWiki> logger)
   {
+    private const string Http_Home_Net = "http://home.net";
+    private readonly Uri HomeUri = new(Http_Home_Net);
     private readonly ILogger<AdoWiki> _logger = logger;
 
     public async Task<int> ConvertAsync(DocFxHelper.Specification.DocSpecAdoWiki docSpec, DirectoryInfo location)
     {
       _logger.LogInformation("Convertion started for spec [{name}]", docSpec.Id);
 
+      await EnsureItemNamesAreDocFxSafe(location);
+      await FixHyperlinks(location);
+
+      _logger.LogInformation("Convertion done for spec [{name}]", docSpec.Id);
+
+      return 0;
+    }
+
+    private async Task FixHyperlinks(DirectoryInfo location)
+    {
+      var mdFiles = location.GetFiles("*.md", SearchOption.AllDirectories);
+
+      foreach(var mdFile in mdFiles)
+      {
+        await FixHyperlinks(mdFile);
+      }
+    }
+
+    private async Task FixHyperlinks(FileInfo mdFile)
+    {
+      var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
+
+      var pageRelativePath = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+
+      var pageUri = new Uri(HomeUri, pageRelativePath!);
+
+      var markdownDocument = Markdown.Parse(mdContent.Content);
+
+      // Traverse the document to find all link elements
+      foreach (var node in markdownDocument.Descendants())
+      {
+        if (node is LinkInline link)
+        {
+          _logger.LogDebug("Found a link [{link}]", link.Url);
+
+          if (link.Url != null && link.Url != "/")
+          {
+            var url = link.Url;
+
+            if (System.Uri.IsWellFormedUriString(url, UriKind.Relative))
+            {
+
+              string? docfxSafeUrl = url;
+
+              if (System.Web.HttpUtility.UrlDecode(url) != url)
+              {
+                docfxSafeUrl = System.Web.HttpUtility.UrlDecode(url.Replace("-", " "));
+              }
+
+              var linkUri = new Uri(HomeUri, docfxSafeUrl);
+
+              var linkUriWithoutFrontSlash = linkUri.LocalPath.Substring(1);
+
+              string linkPath = System.IO.Path.Combine(Directory.GetCurrentDirectory(), linkUriWithoutFrontSlash);
+
+              string? linkRelative;
+
+              if (System.IO.File.Exists(linkPath))
+              {
+                _logger.LogDebug("Link [{url}] is a file", docfxSafeUrl);
+                linkRelative = linkUriWithoutFrontSlash;
+              }
+              else if (System.IO.File.Exists(linkPath + ".md"))
+              {
+                _logger.LogDebug("Link [{url}] is an md file", docfxSafeUrl);
+                linkRelative = linkUriWithoutFrontSlash + ".md";
+              }
+              else if (System.IO.Directory.Exists(linkPath))
+              {
+                _logger.LogDebug("Link points [{url}] is a folder, need to check the first item of the .order", docfxSafeUrl);
+
+                var dotOrder = System.IO.Path.Combine(linkPath, ".order");
+
+                if (System.IO.File.Exists(dotOrder))
+                {
+                  _logger.LogDebug("Get first item of {dotOrder}", dotOrder);
+
+                  var firstItem = (await System.IO.File.ReadAllLinesAsync(dotOrder)).FirstOrDefault();
+                  if (firstItem != null && !firstItem.EndsWith('/'))
+                  {
+                    logger.LogDebug("first item of .order {firstItem} doesn't have a trailing slash, so it's hopefully an mdFile", firstItem);
+                    linkRelative = linkUriWithoutFrontSlash + "/" + firstItem + ".md";
+                  }
+                  else
+                  {
+                    logger.LogDebug("first item of .order {firstItem} has a trailing slash, so a subFolder", firstItem);
+                    linkRelative = linkUriWithoutFrontSlash + "/";
+                  }
+                }
+                else
+                {
+                  _logger.LogDebug("No .order file found in [{linkPath}], the link will be to the folder", linkPath);
+                  linkRelative = linkUriWithoutFrontSlash + "/";
+                }
+              }
+              else
+              {
+                _logger.LogWarning("Link [{url}] is not a file or directory", docfxSafeUrl);
+                linkRelative = linkUriWithoutFrontSlash;
+              }
+
+              var linkRelativeUri = new Uri(HomeUri, linkRelative);
+
+              if (linkRelativeUri.LocalPath == pageUri.LocalPath)
+              {
+                _logger.LogDebug("Link [{url}] points the current file [{linkRelativeUri}]", linkUri.LocalPath, pageUri.LocalPath);
+                linkRelative = pageUri.Segments[^1];
+              }
+              else
+              {
+                linkRelative = System.Web.HttpUtility.UrlDecode(pageUri.MakeRelativeUri(linkRelativeUri).ToString());
+              }
+
+              _logger.LogDebug("For page [{pageRelativePath}] Link [{url}] will be [{linkRelative}]", pageRelativePath, link.Url, linkRelative);
+              link.Url = linkRelative;
+
+            }
+          }
+        }
+      }
+
+      var writer = new StringWriter();
+      var renderer = new Markdig.Renderers.Normalize.NormalizeRenderer(writer);
+      var pipeline = new MarkdownPipelineBuilder().Build();
+      pipeline.Setup(renderer);
+      renderer.Render(markdownDocument);
+      writer.Flush();
+      
+      mdContent.Markdown = writer.ToString();
+
+      await mdContent.ToFile(mdFile);
+    }
+
+    private async Task EnsureItemNamesAreDocFxSafe(DirectoryInfo location)
+    {
       Stack<DirectoryInfo> folderStack = GetStackOfFolders(location);
 
       do
       {
         var current = folderStack.Pop();
-        
+
         RenameDirectoryToSafeName(current);
 
         var mdFiles = current.GetFiles("*.md");
@@ -35,10 +175,6 @@ namespace DocFxHelper.Processor.Convert
         await CreateTocYmlFromDotOrder(current);
 
       } while (folderStack.Count > 0);
-
-      _logger.LogInformation("Convertion done for spec [{name}]", docSpec.Id);
-
-      return 0;
     }
 
     private async Task CreateTocYmlFromDotOrder(DirectoryInfo location)
