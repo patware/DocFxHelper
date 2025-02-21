@@ -8,7 +8,21 @@ namespace DocFxHelper.Domain
     public FileInfo MdFile { get; }
     public string RelativePath { get; }
 
-    public string Content { get; private set; }
+
+    public string Content { 
+      get 
+      {
+        if (string.IsNullOrWhiteSpace(YamlHeader))
+        {
+          return Markdown;
+        }
+        else
+        {
+          return $"---\r\n{YamlHeader}\r\n---\r\n{Markdown}";
+        }
+      }
+    }
+
     public string YamlHeader { get; set; }
     public string Markdown { get; set; }
     
@@ -23,36 +37,27 @@ namespace DocFxHelper.Domain
 
     private async Task LoadContentAsync()
     {
-      Content = await File.ReadAllTextAsync(MdFile.FullName);
+      var s = await File.ReadAllTextAsync(MdFile.FullName);
 
-      const string yamlDelimiter = "---";
-      int startIndex = Content.IndexOf(yamlDelimiter);
-      int endIndex = Content.LastIndexOf(yamlDelimiter);
+      const string yamlDelimiter = "---\r\n";
+      int startIndex = s.IndexOf(yamlDelimiter);
+      int endIndex = s.LastIndexOf(yamlDelimiter);
 
       if (startIndex == -1 || endIndex == -1)
       {
         YamlHeader = string.Empty;
-        Markdown = Content;
+        Markdown = s;
       }
       else
       {
-        YamlHeader = Content.Substring(startIndex + yamlDelimiter.Length, endIndex - (startIndex + yamlDelimiter.Length)).Trim();
-        Markdown = Content.Substring(endIndex + yamlDelimiter.Length).Trim();
+        YamlHeader = s.Substring(startIndex + yamlDelimiter.Length, endIndex - (startIndex + yamlDelimiter.Length)).Trim();
+        Markdown = s.Substring(endIndex + yamlDelimiter.Length).Trim();
       }
     }
 
     public async Task ToFile(FileInfo mdFile)
     {
-
-      if (string.IsNullOrWhiteSpace(YamlHeader))
-      {
-        await File.WriteAllTextAsync(mdFile.FullName, Markdown);
-      }
-      else
-      {
-        await File.WriteAllTextAsync(mdFile.FullName, $"---\n{YamlHeader}\n---\n{Markdown}");
-      }
-
+      await File.WriteAllTextAsync(mdFile.FullName, Content);
     }
 
     private AdoWiki (FileInfo mdFile)

@@ -4,14 +4,35 @@ using Markdig.Syntax;
 using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Runtime.InteropServices;
+using YamlDotNet.Serialization.NamingConventions;
+using YamlDotNet.Serialization;
+using System.ComponentModel;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace DocFxHelper.Processor.Convert
 {
-  public class AdoWiki(ILogger<AdoWiki> logger)
+  public class AdoWiki
   {
     private const string Http_Home_Net = "http://home.net";
-    private readonly Uri HomeUri = new(Http_Home_Net);
-    private readonly ILogger<AdoWiki> _logger = logger;
+    private readonly Uri _homeUri = new(Http_Home_Net);
+    private readonly ILogger<AdoWiki> _logger;
+    private readonly IDeserializer _yamlDeserializer;
+    private readonly ISerializer _yamlSerializer;
+
+    public AdoWiki(ILogger<AdoWiki> logger)
+    {
+      _logger = logger;
+
+      _yamlDeserializer = new DeserializerBuilder()
+        .WithNamingConvention(UnderscoredNamingConvention.Instance)  // see height_in_inches in sample yml
+        .Build();
+
+      _yamlSerializer = new SerializerBuilder()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        .Build();
+
+    }
+
 
     public async Task<int> ConvertAsync(DocFxHelper.Specification.DocSpecAdoWiki docSpec, DirectoryInfo location)
     {
@@ -19,10 +40,61 @@ namespace DocFxHelper.Processor.Convert
 
       await EnsureItemNamesAreDocFxSafe(location);
       await FixHyperlinks(location);
+      await SetUid(docSpec.Id!, location);
 
       _logger.LogInformation("Convertion done for spec [{name}]", docSpec.Id);
 
       return 0;
+    }
+
+    private async Task SetUid(string wikiId, DirectoryInfo location)
+    {
+
+      var mdFiles = location.GetFiles("*.md", SearchOption.AllDirectories);
+
+      foreach (var mdFile in mdFiles)
+      {
+        await SetUid(wikiId, mdFile);
+      }
+
+    }
+
+    private async Task SetUid(string wikiId, FileInfo mdFile)
+    {
+      var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
+
+      var pageRelativePath = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+
+      var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader);
+
+      if (yamlHeader == null)
+      {
+        _logger.LogDebug("No yaml header found in [{mdFile}] - Creating empty dictionary", mdFile.FullName);
+        yamlHeader = new Dictionary<string, object>();
+      }
+
+      if (!yamlHeader.ContainsKey("uid"))
+      {
+        _logger.LogDebug("No uid found in the yaml header - Creating one from the wikiId and the pageRelativePath");
+
+        var nameUid = pageRelativePath
+          .Replace("/", "_")
+          .Replace("\\", "_")
+          .Replace(" ", "_")
+          .Replace(".md", "");
+
+        var uid = $"{wikiId}_{nameUid}";
+
+        _logger.LogDebug("[{pageRelativePath}] page's uid is [{uid}]", pageRelativePath, uid);
+        yamlHeader["uid"] = uid;
+
+        mdContent.YamlHeader = _yamlSerializer.Serialize(yamlHeader);
+
+        _logger.LogDebug("Writing the new yaml header to the file [{mdFile}]", mdFile.FullName);
+        await mdContent.ToFile(mdFile);
+
+      }
+
     }
 
     private async Task FixHyperlinks(DirectoryInfo location)
@@ -38,12 +110,10 @@ namespace DocFxHelper.Processor.Convert
     private async Task FixHyperlinks(FileInfo mdFile)
     {
       var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
+      var markdownDocument = Markdown.Parse(mdContent.Markdown);
 
-      var pageRelativePath = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
-
-      var pageUri = new Uri(HomeUri, pageRelativePath!);
-
-      var markdownDocument = Markdown.Parse(mdContent.Content);
+      var mdFilePathRelativeToRoot = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+      var mdFileUri = new Uri(_homeUri, mdFilePathRelativeToRoot!);
 
       // Traverse the document to find all link elements
       foreach (var node in markdownDocument.Descendants())
@@ -56,82 +126,84 @@ namespace DocFxHelper.Processor.Convert
           {
             var url = link.Url;
 
+            var finalUrl = url;
+
             if (System.Uri.IsWellFormedUriString(url, UriKind.Relative))
             {
 
-              string? docfxSafeUrl = url;
+              string docfxSafeUrl = url;
 
               if (System.Web.HttpUtility.UrlDecode(url) != url)
               {
                 docfxSafeUrl = System.Web.HttpUtility.UrlDecode(url.Replace("-", " "));
               }
 
-              var linkUri = new Uri(HomeUri, docfxSafeUrl);
+              _logger.LogDebug("DocFx Safe Url [{docfxSafeUrl}]", docfxSafeUrl);
 
-              var linkUriWithoutFrontSlash = linkUri.LocalPath.Substring(1);
+              finalUrl = docfxSafeUrl;
 
-              string linkPath = System.IO.Path.Combine(Directory.GetCurrentDirectory(), linkUriWithoutFrontSlash);
+              var dofxSafeUri = new Uri(mdFileUri, docfxSafeUrl);
+              _logger.LogDebug("DocFx Safe Uri [{dofxSafeUri}]", dofxSafeUri);
 
-              string? linkRelative;
-
-              if (System.IO.File.Exists(linkPath))
+              if (dofxSafeUri.AbsoluteUri == mdFileUri.AbsoluteUri)
               {
-                _logger.LogDebug("Link [{url}] is a file", docfxSafeUrl);
-                linkRelative = linkUriWithoutFrontSlash;
+                _logger.LogDebug("UC 1 - Link [{url}] points the current file [{mdFileUri}] - Nothing to do", dofxSafeUri.LocalPath, mdFileUri.LocalPath);
               }
-              else if (System.IO.File.Exists(linkPath + ".md"))
+              else
               {
-                _logger.LogDebug("Link [{url}] is an md file", docfxSafeUrl);
-                linkRelative = linkUriWithoutFrontSlash + ".md";
-              }
-              else if (System.IO.Directory.Exists(linkPath))
-              {
-                _logger.LogDebug("Link points [{url}] is a folder, need to check the first item of the .order", docfxSafeUrl);
+                var linkUriRelativeToPage = mdFileUri.MakeRelativeUri(dofxSafeUri);
+                _logger.LogDebug("Link URI Relative to page [{linkUriRelativeToPage}]", dofxSafeUri.LocalPath);
 
-                var dotOrder = System.IO.Path.Combine(linkPath, ".order");
+                var linkRelativeToPage = System.Web.HttpUtility.UrlDecode(linkUriRelativeToPage.ToString());
+                _logger.LogDebug("Link's target page Relative to given page [{linkRelativeToPage}]", linkRelativeToPage);
 
-                if (System.IO.File.Exists(dotOrder))
+                if (File.Exists(System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage)))
                 {
-                  _logger.LogDebug("Get first item of {dotOrder}", dotOrder);
+                  _logger.LogDebug("UC 2 - Link [{url}] points to an existing page, nothing to do", linkRelativeToPage);
+                  finalUrl = linkRelativeToPage;
+                }
+                else if (File.Exists(System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + ".md")))
+                {
+                  _logger.LogDebug("UC 3 - Link [{url}.md] points to an existing page, append the .md extension to the link", linkRelativeToPage);
+                  finalUrl = linkRelativeToPage + ".md";
+                }
+                else if (Directory.Exists(System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + "/")))
+                {
+                  _logger.LogDebug("UC 4 - Link [{url}/] points to an existing folder, need to check the first item of the .order", linkRelativeToPage);
 
-                  var firstItem = (await System.IO.File.ReadAllLinesAsync(dotOrder)).FirstOrDefault();
-                  if (firstItem != null && !firstItem.EndsWith('/'))
+                  var dotOrder = System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + "/", ".order");
+
+                  if (System.IO.File.Exists(dotOrder))
                   {
-                    logger.LogDebug("first item of .order {firstItem} doesn't have a trailing slash, so it's hopefully an mdFile", firstItem);
-                    linkRelative = linkUriWithoutFrontSlash + "/" + firstItem + ".md";
+                    _logger.LogDebug("Get first item of {dotOrder}", dotOrder);
+                    var firstItem = (await System.IO.File.ReadAllLinesAsync(dotOrder)).FirstOrDefault();
+
+                    if (firstItem != null && !firstItem.EndsWith('/'))
+                    {
+                      _logger.LogDebug("First item of .order {firstItem} doesn't have a trailing slash, so it's hopefully an mdFile", firstItem);
+                      finalUrl = linkRelativeToPage + "/" + firstItem + ".md";
+                    }
+                    else
+                    {
+                      _logger.LogDebug("First item of .order {firstItem} has a trailing slash, so a subFolder", firstItem);
+                      finalUrl = linkRelativeToPage + "/" + firstItem;
+                    }
                   }
                   else
                   {
-                    logger.LogDebug("first item of .order {firstItem} has a trailing slash, so a subFolder", firstItem);
-                    linkRelative = linkUriWithoutFrontSlash + "/";
+                    finalUrl = linkRelativeToPage + "/";
                   }
                 }
                 else
                 {
-                  _logger.LogDebug("No .order file found in [{linkPath}], the link will be to the folder", linkPath);
-                  linkRelative = linkUriWithoutFrontSlash + "/";
+                  _logger.LogDebug("UC 5 - Link to neither a known file nor folder - leaving it as-is");
                 }
               }
-              else
-              {
-                _logger.LogWarning("Link [{url}] is not a file or directory", docfxSafeUrl);
-                linkRelative = linkUriWithoutFrontSlash;
-              }
 
-              var linkRelativeUri = new Uri(HomeUri, linkRelative);
+              finalUrl = finalUrl.Replace(" ", "%20");
 
-              if (linkRelativeUri.LocalPath == pageUri.LocalPath)
-              {
-                _logger.LogDebug("Link [{url}] points the current file [{linkRelativeUri}]", linkUri.LocalPath, pageUri.LocalPath);
-                linkRelative = pageUri.Segments[^1];
-              }
-              else
-              {
-                linkRelative = System.Web.HttpUtility.UrlDecode(pageUri.MakeRelativeUri(linkRelativeUri).ToString());
-              }
-
-              _logger.LogDebug("For page [{pageRelativePath}] Link [{url}] will be [{linkRelative}]", pageRelativePath, link.Url, linkRelative);
-              link.Url = linkRelative;
+              _logger.LogDebug("For page [{pageRelativePath}] Link [{url}] will be [{finalUrl}]", mdFilePathRelativeToRoot, link.Url, finalUrl);
+              link.Url = finalUrl;
 
             }
           }
