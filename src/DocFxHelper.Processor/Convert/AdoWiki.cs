@@ -8,6 +8,7 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.ComponentModel;
 using static System.Net.Mime.MediaTypeNames;
+using DocFxHelper.Specification;
 
 namespace DocFxHelper.Processor.Convert
 {
@@ -34,17 +35,83 @@ namespace DocFxHelper.Processor.Convert
     }
 
 
-    public async Task<int> ConvertAsync(DocFxHelper.Specification.DocSpecAdoWiki docSpec, DirectoryInfo location)
+    public async Task<int> ConvertAsync(DocFxHelper.Specification.DocSpecAdoWiki docSpec, DirectoryInfo location, DocFxHelper.Specification.DocBuild build)
     {
       _logger.LogInformation("Convertion started for spec [{name}]", docSpec.Id);
 
       await EnsureItemNamesAreDocFxSafe(location);
       await FixHyperlinks(location);
       await SetUid(docSpec.Id!, location);
+      await SetDocFxHelperYamlHeader(location, docSpec, build);
 
       _logger.LogInformation("Convertion done for spec [{name}]", docSpec.Id);
 
       return 0;
+    }
+
+    private async Task SetDocFxHelperYamlHeader(DirectoryInfo location, DocSpecAdoWiki docSpec, DocBuild build)
+    {
+      var mdFiles = location.GetFiles("*.md", SearchOption.AllDirectories);
+
+      foreach (var mdFile in mdFiles)
+      {
+        await SetDocFxHelperYamlHeader(mdFile, docSpec, build);
+      }
+    }
+    private async Task SetDocFxHelperYamlHeader(FileInfo mdFile, DocSpecAdoWiki docSpec, DocBuild build)
+    {
+      var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
+
+      var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader);
+
+      if (yamlHeader == null)
+      {
+        _logger.LogDebug("No yaml header found in [{mdFile}] - Creating empty dictionary", mdFile.FullName);
+        yamlHeader = [];
+      }
+
+      var mdFileRelativePath = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+
+      var mdFileRemote = GetDocFxRemote(mdFileRelativePath, docSpec.WikiUrl, build.RepositoryBranchName, docSpec.RepoRelativePath);
+
+      yamlHeader["_docfxHelper"] = mdFileRemote;
+      yamlHeader["_adoWikiUri"] = docSpec.WikiUrl;
+
+      mdContent.YamlHeader = _yamlSerializer.Serialize(yamlHeader);
+
+      _logger.LogDebug("Writing the new yaml header to the file [{mdFile}]", mdFile.FullName);
+      await mdContent.ToFile(mdFile);
+    }
+
+    private static Dictionary<string, DocFxHelper.Domain.DocFxRemote> GetDocFxRemote(string mdFileRelativePath, string cloneUrl, string? branch, string? path)
+    {
+      if (path == null)
+      {
+        path = "/";
+      }
+
+      var repoRelativePathSegments = path!.Replace("\\", "/").Split("/");
+      var fileRelativePathSegments = mdFileRelativePath.Replace("\\", "/").Split("/");
+
+      var pathSegments = repoRelativePathSegments
+        .Concat(fileRelativePathSegments)
+        .ToArray()
+        .Where(p => !string.IsNullOrEmpty(p) && p != ".");
+
+      var pathFinal = string.Join("/", pathSegments);
+
+      var d = new Dictionary<string, DocFxHelper.Domain.DocFxRemote>
+      {
+        ["remote"] = new DocFxHelper.Domain.DocFxRemote()
+        {
+          Repo = cloneUrl,
+        }
+      };
+
+      if (branch != null) { d["remote"].Branch = branch; }
+      d["remote"].Path = pathFinal;
+
+      return d;
     }
 
     private async Task SetUid(string wikiId, DirectoryInfo location)
@@ -101,7 +168,7 @@ namespace DocFxHelper.Processor.Convert
     {
       var mdFiles = location.GetFiles("*.md", SearchOption.AllDirectories);
 
-      foreach(var mdFile in mdFiles)
+      foreach (var mdFile in mdFiles)
       {
         await FixHyperlinks(mdFile);
       }
@@ -216,7 +283,7 @@ namespace DocFxHelper.Processor.Convert
       pipeline.Setup(renderer);
       renderer.Render(markdownDocument);
       writer.Flush();
-      
+
       mdContent.Markdown = writer.ToString();
 
       await mdContent.ToFile(mdFile);
@@ -361,7 +428,7 @@ namespace DocFxHelper.Processor.Convert
         }
 
         await System.IO.File.WriteAllLinesAsync(dotOrder, newArray);
-        
+
       }
     }
 

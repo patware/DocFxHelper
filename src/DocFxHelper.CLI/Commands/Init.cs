@@ -32,7 +32,7 @@ namespace DocFxHelper.CLI.Commands
     }
 
     public Command GetCommand()
-    {     
+    {
       var specTypeArgument = new Argument<DocFxHelper.Specification.Enums.DocSpecType>(
         name: "SpecType",
         description: "The type of spec to generate"
@@ -66,14 +66,14 @@ namespace DocFxHelper.CLI.Commands
           _logger.LogInformation("You can specify a different filename by specifying one via the {argName} argument", out_filename_arg);
 
         }
-        specName_json = "spec.docs.json";        
+        specName_json = "spec.docs.json";
       }
       else
       {
         specName_json = specFilename;
       }
 
-        DocFxHelper.Specification.DocSpec? spec;
+      DocFxHelper.Specification.DocSpec? spec;
 
       switch (specType)
       {
@@ -127,7 +127,7 @@ namespace DocFxHelper.CLI.Commands
             {
               _logger.LogInformation("The {initName} expects a SpecType parameter which is one the following:", nameof(Init));
               var enumItems = Enum.GetValues(typeof(Specification.Enums.DocSpecType)).Cast<Specification.Enums.DocSpecType>();
-              
+
               foreach (var e in enumItems)
               {
                 _logger.LogInformation("\tdfx Init {specType}", e);
@@ -145,9 +145,9 @@ namespace DocFxHelper.CLI.Commands
         _logger.LogInformation("Writing [{specType}] to {specName}", specType, specName_json);
         await System.IO.File
           .WriteAllTextAsync(
-            specName_json, 
+            specName_json,
             System.Text.Json.JsonSerializer.Serialize<DocFxHelper.Specification.DocSpec>(
-              spec, 
+              spec,
               _jsonOptions
             )
           );

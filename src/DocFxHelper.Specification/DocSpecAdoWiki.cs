@@ -14,6 +14,7 @@ namespace DocFxHelper.Specification
     public bool IsRoot { get; set; }
 
     public required string WikiUrl { get; set; }
+    
 
     public static DocSpec Init()
     {
@@ -23,6 +24,7 @@ namespace DocFxHelper.Specification
         Name = "My Product Ado Wiki",
         Homepage = "my_product_homepage.md",
         ParentId = "ParentId",
+        RepoRelativePath = "/src/",
         Target = "/Products/Flaghsip/MyProduct",
         MenuParentItemName = "Flagship Suite",
         MenuDisplayName = "My Product",

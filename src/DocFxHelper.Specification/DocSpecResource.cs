@@ -14,6 +14,7 @@ namespace DocFxHelper.Specification
     public string? Name { get; set; }
     public string? ParentId { get; set; }
     public string Target { get; set; } = "/";
+    public string RepoRelativePath { get; set; } = "/";
     public string? MenuParentItemName { get; set; }
     public string? MenuDisplayName { get; set; }
     public int MenuPosition { get; set; } = -1;
