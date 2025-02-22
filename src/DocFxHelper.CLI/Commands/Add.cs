@@ -1,30 +1,28 @@
 using DocFxHelper.CLI.Settings;
-using DocFxHelper.Processor;
-using DocFxHelper.Specification;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using NLog.LayoutRenderers;
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace DocFxHelper.CLI.Commands
 {
-  internal class Convert(
-    ILogger<Convert> logger,
+  internal class Add(
+    ILogger<Add> logger,
     IOptions<Settings.DocFxHelperSettings> options,
     Common common,
-    AdoWiki adoWikiProcessor
+    Processor.AdoWiki adoWikiProcessor
   )
   {
-    private const string Description = "Convert files from a spec to a DocFx friendly format";
-    private readonly ILogger<Convert> _logger = logger;
+    private const string Description = "Add files from a spec to docfx.json and integrates them with other spec files";
+    private readonly ILogger<Add> _logger = logger;
     private readonly DocFxHelperSettings _settings = options.Value;
     private readonly Common _common = common;
-    private readonly AdoWiki _adoWikiProcessor = adoWikiProcessor;
+    private readonly Processor.AdoWiki _adoWikiProcessor = adoWikiProcessor;
 
     public enum ExitValues
     {
@@ -51,7 +49,7 @@ namespace DocFxHelper.CLI.Commands
 
     public Command GetCommand()
     {
-      var cmd = new Command("convert", Description);
+      var cmd = new Command("add", Description);
 
       Argument<string> pathArgument = _common.GetPathArgument();
       cmd.AddArgument(pathArgument);
@@ -59,22 +57,16 @@ namespace DocFxHelper.CLI.Commands
       Option<string> specOption = _common.GetSpecOption();
       cmd.AddOption(specOption);
 
-      Option<string> buildOption = _common.GetBuildOption();
-      cmd.AddOption(buildOption);
-
-      cmd.SetHandler(async (string path, string specJson, string buildJson) => await RunAsync(path, specJson, buildJson), pathArgument, specOption, buildOption);
-
+      cmd.SetHandler(async (string path, string specJson) => await RunAsync(path, specJson), pathArgument, specOption);
       return cmd;
+
     }
 
-
-
-    public async Task<int> RunAsync(string path, string specJson, string buildJson)
+    private async Task<int> RunAsync(string path, string specJson)
     {
       _logger.LogInformation(Description);
       _logger.LogInformation("      path: [{path}]", path);
       _logger.LogInformation("  specJson: [{specJson}]", specJson);
-      _logger.LogInformation(" buildJson: [{buildJson}]", buildJson);
 
       if (System.IO.File.Exists(path) && System.IO.Directory.Exists(specJson))
       {
@@ -90,18 +82,11 @@ namespace DocFxHelper.CLI.Commands
         return (int)ExitValues.SpecJsonNotFound;
       }
 
-      var build = await _common.GetBuildFromJsonAsync(buildJson, location);
-
-      if (build == null)
-      {
-        return (int)ExitValues.BuildJsonNotFound;
-      }
-
       switch (spec!.GetType().Name)
       {
         case nameof(Specification.DocSpecAdoWiki):
           {
-            await _adoWikiProcessor.ConvertAsync((Specification.DocSpecAdoWiki)spec, location, build!);
+            await _adoWikiProcessor.AddAsync((Specification.DocSpecAdoWiki)spec, location);
             break;
           }
         default:
@@ -112,11 +97,8 @@ namespace DocFxHelper.CLI.Commands
           }
       }
 
-
-
       return (int)ExitValues.Ok;
+
     }
-
-
   }
 }

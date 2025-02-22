@@ -9,10 +9,11 @@ using YamlDotNet.Serialization;
 using System.ComponentModel;
 using static System.Net.Mime.MediaTypeNames;
 using DocFxHelper.Specification;
+using Markdig.Parsers;
 
-namespace DocFxHelper.Processor.Convert
+namespace DocFxHelper.Processor
 {
-  public class AdoWiki
+  public class AdoWiki: IProcessor<DocSpecAdoWiki>
   {
     private const string Http_Home_Net = "http://home.net";
     private readonly Uri _homeUri = new(Http_Home_Net);
@@ -35,7 +36,7 @@ namespace DocFxHelper.Processor.Convert
     }
 
 
-    public async Task<int> ConvertAsync(DocFxHelper.Specification.DocSpecAdoWiki docSpec, DirectoryInfo location, DocFxHelper.Specification.DocBuild build)
+    public async Task<int> ConvertAsync(DocSpecAdoWiki docSpec, DirectoryInfo location, DocBuild build)
     {
       _logger.LogInformation("Convertion started for spec [{name}]", docSpec.Id);
 
@@ -70,7 +71,7 @@ namespace DocFxHelper.Processor.Convert
         yamlHeader = [];
       }
 
-      var mdFileRelativePath = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+      var mdFileRelativePath = Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
 
       var mdFileRemote = GetDocFxRemote(mdFileRelativePath, docSpec.WikiUrl, build.RepositoryBranchName, docSpec.RepoRelativePath);
 
@@ -83,7 +84,7 @@ namespace DocFxHelper.Processor.Convert
       await mdContent.ToFile(mdFile);
     }
 
-    private static Dictionary<string, DocFxHelper.Domain.DocFxRemote> GetDocFxRemote(string mdFileRelativePath, string cloneUrl, string? branch, string? path)
+    private static Dictionary<string, Domain.DocFxRemote> GetDocFxRemote(string mdFileRelativePath, string cloneUrl, string? branch, string? path)
     {
       if (path == null)
       {
@@ -100,9 +101,9 @@ namespace DocFxHelper.Processor.Convert
 
       var pathFinal = string.Join("/", pathSegments);
 
-      var d = new Dictionary<string, DocFxHelper.Domain.DocFxRemote>
+      var d = new Dictionary<string, Domain.DocFxRemote>
       {
-        ["remote"] = new DocFxHelper.Domain.DocFxRemote()
+        ["remote"] = new Domain.DocFxRemote()
         {
           Repo = cloneUrl,
         }
@@ -130,7 +131,7 @@ namespace DocFxHelper.Processor.Convert
     {
       var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
 
-      var pageRelativePath = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+      var pageRelativePath = Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
 
       var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader);
 
@@ -179,7 +180,7 @@ namespace DocFxHelper.Processor.Convert
       var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
       var markdownDocument = Markdown.Parse(mdContent.Markdown);
 
-      var mdFilePathRelativeToRoot = System.IO.Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
+      var mdFilePathRelativeToRoot = Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
       var mdFileUri = new Uri(_homeUri, mdFilePathRelativeToRoot!);
 
       // Traverse the document to find all link elements
@@ -195,7 +196,7 @@ namespace DocFxHelper.Processor.Convert
 
             var finalUrl = url;
 
-            if (System.Uri.IsWellFormedUriString(url, UriKind.Relative))
+            if (Uri.IsWellFormedUriString(url, UriKind.Relative))
             {
 
               string docfxSafeUrl = url;
@@ -224,26 +225,26 @@ namespace DocFxHelper.Processor.Convert
                 var linkRelativeToPage = System.Web.HttpUtility.UrlDecode(linkUriRelativeToPage.ToString());
                 _logger.LogDebug("Link's target page Relative to given page [{linkRelativeToPage}]", linkRelativeToPage);
 
-                if (File.Exists(System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage)))
+                if (File.Exists(Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage)))
                 {
                   _logger.LogDebug("UC 2 - Link [{url}] points to an existing page, nothing to do", linkRelativeToPage);
                   finalUrl = linkRelativeToPage;
                 }
-                else if (File.Exists(System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + ".md")))
+                else if (File.Exists(Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + ".md")))
                 {
                   _logger.LogDebug("UC 3 - Link [{url}.md] points to an existing page, append the .md extension to the link", linkRelativeToPage);
                   finalUrl = linkRelativeToPage + ".md";
                 }
-                else if (Directory.Exists(System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + "/")))
+                else if (Directory.Exists(Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + "/")))
                 {
                   _logger.LogDebug("UC 4 - Link [{url}/] points to an existing folder, need to check the first item of the .order", linkRelativeToPage);
 
-                  var dotOrder = System.IO.Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + "/", ".order");
+                  var dotOrder = Path.Combine(mdFile.Directory!.FullName, linkRelativeToPage + "/", ".order");
 
-                  if (System.IO.File.Exists(dotOrder))
+                  if (File.Exists(dotOrder))
                   {
                     _logger.LogDebug("Get first item of {dotOrder}", dotOrder);
-                    var firstItem = (await System.IO.File.ReadAllLinesAsync(dotOrder)).FirstOrDefault();
+                    var firstItem = (await File.ReadAllLinesAsync(dotOrder)).FirstOrDefault();
 
                     if (firstItem != null && !firstItem.EndsWith('/'))
                     {
@@ -320,18 +321,18 @@ namespace DocFxHelper.Processor.Convert
     {
       var includeIndexMd = location.FullName != Directory.GetCurrentDirectory();
 
-      var dotOrder = System.IO.Path.Combine(location.FullName, ".order");
+      var dotOrder = Path.Combine(location.FullName, ".order");
 
-      if (!System.IO.File.Exists(dotOrder))
+      if (!File.Exists(dotOrder))
       {
         _logger.LogWarning("No .order file found in [{location}]", location.FullName);
         return;
       }
 
       _logger.LogDebug("Loading .order file from [{location}]", location.FullName);
-      var orderItems = await System.IO.File.ReadAllLinesAsync(dotOrder);
+      var orderItems = await File.ReadAllLinesAsync(dotOrder);
 
-      var tocItems = new System.Collections.Generic.List<string>();
+      var tocItems = new List<string>();
 
       foreach (var item in orderItems)
       {
@@ -354,9 +355,9 @@ namespace DocFxHelper.Processor.Convert
         tocItems.Add(tocItem);
       }
 
-      var toc_Yml = System.IO.Path.Combine(location.FullName, "toc.yml");
+      var toc_Yml = Path.Combine(location.FullName, "toc.yml");
 
-      await System.IO.File.WriteAllLinesAsync(toc_Yml, tocItems);
+      await File.WriteAllLinesAsync(toc_Yml, tocItems);
     }
 
     private static Stack<DirectoryInfo> GetStackOfFolders(DirectoryInfo location)
@@ -385,9 +386,9 @@ namespace DocFxHelper.Processor.Convert
     private async Task MoveMdFileToTheirSubFolder(FileInfo mdFile)
     {
       var location = mdFile.Directory!;
-      var originalFileBaseName = System.IO.Path.GetFileNameWithoutExtension(mdFile.Name);
+      var originalFileBaseName = Path.GetFileNameWithoutExtension(mdFile.Name);
 
-      var mdSubFolder = new DirectoryInfo(System.IO.Path.Combine(location.FullName, originalFileBaseName));
+      var mdSubFolder = new DirectoryInfo(Path.Combine(location.FullName, originalFileBaseName));
 
       if (mdSubFolder.Exists)
       {
@@ -401,7 +402,7 @@ namespace DocFxHelper.Processor.Convert
 
           await SetDotOrderItemNewLocation(location, originalFileBaseName, mdSubFolder);
 
-          var newMdFileBaseName = System.IO.Path.GetFileNameWithoutExtension(newMdFilename);
+          var newMdFileBaseName = Path.GetFileNameWithoutExtension(newMdFilename);
           await InsertNewItemInDotOrder(mdSubFolder, newMdFileBaseName);
         }
       }
@@ -409,13 +410,13 @@ namespace DocFxHelper.Processor.Convert
 
     private async Task InsertNewItemInDotOrder(DirectoryInfo location, string newMdFileBaseName)
     {
-      var dotOrder = System.IO.Path.Combine(location.FullName, ".order");
+      var dotOrder = Path.Combine(location.FullName, ".order");
 
-      if (System.IO.File.Exists(dotOrder))
+      if (File.Exists(dotOrder))
       {
         _logger.LogDebug("Loading .order file from [{mdSubFolder}]", location.FullName);
 
-        var orderItems = await System.IO.File.ReadAllLinesAsync(dotOrder);
+        var orderItems = await File.ReadAllLinesAsync(dotOrder);
 
         string[] newArray = new string[orderItems.Length + 1];
 
@@ -427,7 +428,7 @@ namespace DocFxHelper.Processor.Convert
           newArray[i + 1] = orderItems[i];
         }
 
-        await System.IO.File.WriteAllLinesAsync(dotOrder, newArray);
+        await File.WriteAllLinesAsync(dotOrder, newArray);
 
       }
     }
@@ -436,23 +437,23 @@ namespace DocFxHelper.Processor.Convert
     {
       string newMdFilename = string.Empty;
 
-      var testFileName = System.IO.Path.Combine(mdSubFolder.FullName, "index.md");
+      var testFileName = Path.Combine(mdSubFolder.FullName, "index.md");
 
-      if (System.IO.File.Exists(testFileName))
+      if (File.Exists(testFileName))
       {
         _logger.LogWarning("File [{newMdFilename}] already exists.", testFileName);
 
-        testFileName = System.IO.Path.Combine(mdSubFolder.FullName, originalFileBaseName + ".md");
+        testFileName = Path.Combine(mdSubFolder.FullName, originalFileBaseName + ".md");
 
-        if (System.IO.File.Exists(testFileName))
+        if (File.Exists(testFileName))
         {
           _logger.LogError("File [{newMdFilename}] already exists. Really?!  Lets try appending a number from 1..999", testFileName);
 
           for (int i = 1; i < 1000; i++)
           {
-            testFileName = System.IO.Path.Combine(mdSubFolder.FullName, originalFileBaseName + $"-{i}.md");
+            testFileName = Path.Combine(mdSubFolder.FullName, originalFileBaseName + $"-{i}.md");
 
-            if (System.IO.File.Exists(testFileName))
+            if (File.Exists(testFileName))
             {
               _logger.LogDebug("File [{testFileName}] already exists.", testFileName);
             }
@@ -479,13 +480,13 @@ namespace DocFxHelper.Processor.Convert
 
     private async Task SetDotOrderItemNewLocation(DirectoryInfo location, string originalFileBaseName, DirectoryInfo mdSubFolder)
     {
-      var dotOrder = System.IO.Path.Combine(location.FullName, ".order");
+      var dotOrder = Path.Combine(location.FullName, ".order");
 
-      if (System.IO.File.Exists(dotOrder))
+      if (File.Exists(dotOrder))
       {
         _logger.LogDebug("Loading .order file from [{mdSubFolder}]", mdSubFolder.FullName);
 
-        var orderItems = await System.IO.File.ReadAllLinesAsync(dotOrder);
+        var orderItems = await File.ReadAllLinesAsync(dotOrder);
 
         var index = orderItems.ToList().IndexOf(originalFileBaseName);
 
@@ -493,7 +494,7 @@ namespace DocFxHelper.Processor.Convert
         {
           _logger.LogDebug("Found the index of the file in the .order file [{index}]", index);
           orderItems[index] = originalFileBaseName + "/";
-          await System.IO.File.WriteAllLinesAsync(dotOrder, orderItems);
+          await File.WriteAllLinesAsync(dotOrder, orderItems);
         }
       }
     }
@@ -508,7 +509,7 @@ namespace DocFxHelper.Processor.Convert
         if (current.Parent != null)
         {
           _logger.LogDebug("Renaming folder [{currentName}] to [{safeFolderName}] - DocFx Friendly folder name", current.Name, safeFolderName);
-          var newFolder = new DirectoryInfo(System.IO.Path.Combine(current.Parent!.FullName, safeFolderName));
+          var newFolder = new DirectoryInfo(Path.Combine(current.Parent!.FullName, safeFolderName));
           current.MoveTo(newFolder.FullName);
         }
       }
@@ -519,11 +520,11 @@ namespace DocFxHelper.Processor.Convert
 
       if (System.Web.HttpUtility.UrlDecode(mdFile.Name) != mdFile.Name)
       {
-        var originalFileBaseName = System.IO.Path.GetFileNameWithoutExtension(mdFile.Name);
+        var originalFileBaseName = Path.GetFileNameWithoutExtension(mdFile.Name);
         var safeFileName = System.Web.HttpUtility.UrlDecode(mdFile.Name.Replace("-", " "));
 
         _logger.LogDebug("Renaming file [{currentName}] to [{safeFileName}] - DocFx Friendly file name", mdFile.Name, safeFileName);
-        var newFile = new FileInfo(System.IO.Path.Combine(mdFile.DirectoryName!, safeFileName));
+        var newFile = new FileInfo(Path.Combine(mdFile.DirectoryName!, safeFileName));
         mdFile.MoveTo(newFile.FullName);
         UpdateOrderFileItemWithSafeName(mdFile, originalFileBaseName, safeFileName);
       }
@@ -531,22 +532,27 @@ namespace DocFxHelper.Processor.Convert
 
     private void UpdateOrderFileItemWithSafeName(FileInfo mdFile, string originalFileBaseName, string safeFileName)
     {
-      var orderFile = System.IO.Path.Combine(mdFile.Directory!.FullName, ".order");
+      var orderFile = Path.Combine(mdFile.Directory!.FullName, ".order");
 
-      if (System.IO.File.Exists(orderFile))
+      if (File.Exists(orderFile))
       {
         _logger.LogDebug("Loading .order file from [{orderFile}]", orderFile);
-        var orderItems = System.IO.File.ReadAllLines(orderFile);
+        var orderItems = File.ReadAllLines(orderFile);
         var index = orderItems.ToList().IndexOf(originalFileBaseName);
         if (index > -1)
         {
           _logger.LogDebug("Found the index of the file in the .order file [{index}]", index);
-          var safeFileBaseName = System.IO.Path.GetFileNameWithoutExtension(safeFileName);
+          var safeFileBaseName = Path.GetFileNameWithoutExtension(safeFileName);
           orderItems[index] = safeFileBaseName;
-          System.IO.File.WriteAllLines(orderFile, orderItems);
+          File.WriteAllLines(orderFile, orderItems);
         }
 
       }
+    }
+
+    public async Task<int> AddAsync(DocSpecAdoWiki docSpec, DirectoryInfo location)
+    {
+      return 0;
     }
   }
 }

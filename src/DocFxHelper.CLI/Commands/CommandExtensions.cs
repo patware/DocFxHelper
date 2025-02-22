@@ -12,12 +12,21 @@ namespace DocFxHelper.CLI.Commands
 {
   public static class CommandExtensions
   {
-    public static void RegisterCommands(this IServiceCollection services)
+    /// <summary>
+    /// Adds every Commands to the ServiceCollection
+    /// </summary>
+    /// <param name="services"></param>
+    /// <returns></returns>
+    public static IServiceCollection RegisterCommands(this IServiceCollection services)
     {
+      services.AddSingleton<Common>();
       services.AddSingleton<Init>();
       services.AddSingleton<InitReversed>();
       services.AddSingleton<Convert>();
+      services.AddSingleton<Add>();
       services.AddSingleton<Root>();
+
+      return services;
     }
 
     public static async Task<int> RunRootCommandAsync(this IServiceProvider services, string[] args)

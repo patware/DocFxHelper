@@ -9,6 +9,7 @@ using System.Text.Json;
 using DocFxHelper.CLI.Commands;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
+using DocFxHelper.Processor;
 
 var ass = System.Reflection.Assembly.GetExecutingAssembly();
 var exe = new FileInfo(ass.Location);
@@ -34,9 +35,9 @@ builder.Services.Configure<DocFxHelper.CLI.Settings.DocFxHelperSettings>(
   )
 );
 
-builder.Services.RegisterCommands();
-
-builder.Services.AddSingleton<DocFxHelper.Processor.Convert.AdoWiki>();
+builder.Services
+  .RegisterCommands()
+  .RegisterProcessors();
 
 builder.Logging.ClearProviders();
 builder.Logging.AddNLog();
