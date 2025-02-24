@@ -101,7 +101,7 @@ namespace DocFxHelper.CLI.Commands
             break;
           }
 
-        case Specification.Enums.DocSpecType.PowerShellModule:
+        case Specification.Enums.DocSpecType.PowershellModule:
           {
             spec = DocFxHelper.Specification.DocSpecPowershellModule.Init();
             break;
@@ -113,7 +113,7 @@ namespace DocFxHelper.CLI.Commands
             break;
           }
 
-        case Specification.Enums.DocSpecType.DotnetApiYaml:
+        case Specification.Enums.DocSpecType.ApiYaml:
           {
             spec = DocFxHelper.Specification.DocSpecDotnetApiYaml.Init();
             break;

@@ -57,12 +57,15 @@ namespace DocFxHelper.CLI.Commands
       Option<string> specOption = _common.GetSpecOption();
       cmd.AddOption(specOption);
 
-      cmd.SetHandler(async (string path, string specJson) => await RunAsync(path, specJson), pathArgument, specOption);
+      Option<string> docfxJson = _common.GetDocFxOption();
+      cmd.AddOption(docfxJson);
+
+      cmd.SetHandler(async (string path, string specJson, string docfxJson) => await RunAsync(path, specJson, docfxJson), pathArgument, specOption, docfxJson);
       return cmd;
 
     }
 
-    private async Task<int> RunAsync(string path, string specJson)
+    private async Task<int> RunAsync(string path, string specJson, string docfxJson)
     {
       _logger.LogInformation(Description);
       _logger.LogInformation("      path: [{path}]", path);
@@ -82,11 +85,13 @@ namespace DocFxHelper.CLI.Commands
         return (int)ExitValues.SpecJsonNotFound;
       }
 
+      var docfx = _common.GetDocFxJson(docfxJson);
+
       switch (spec!.GetType().Name)
       {
         case nameof(Specification.DocSpecAdoWiki):
           {
-            await _adoWikiProcessor.AddAsync((Specification.DocSpecAdoWiki)spec, location);
+            await _adoWikiProcessor.AddAsync((Specification.DocSpecAdoWiki)spec, docfx);
             break;
           }
         default:

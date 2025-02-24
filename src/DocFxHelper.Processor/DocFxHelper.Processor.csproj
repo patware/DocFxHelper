@@ -7,14 +7,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="docfx.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Markdig" Version="0.40.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.2" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\DocFxHelper.Common\DocFxHelper.Common.csproj" />
     <ProjectReference Include="..\DocFxHelper.Domain\DocFxHelper.Domain.csproj" />
     <ProjectReference Include="..\DocFxHelper.Specification\DocFxHelper.Specification.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="docfx.json" />
   </ItemGroup>
 
 </Project>

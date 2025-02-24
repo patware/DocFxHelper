@@ -5,7 +5,7 @@ namespace DocFxHelper.Domain
   public class AdoWiki
   {
 
-    public FileInfo MdFile { get; }
+    public required FileInfo MdFile { get; set; }
     public string RelativePath { get; }
 
 
@@ -14,7 +14,7 @@ namespace DocFxHelper.Domain
       {
         if (string.IsNullOrWhiteSpace(YamlHeader))
         {
-          return Markdown;
+          return Markdown ?? string.Empty;
         }
         else
         {
@@ -23,12 +23,15 @@ namespace DocFxHelper.Domain
       }
     }
 
-    public string YamlHeader { get; set; }
-    public string Markdown { get; set; }
+    public string? YamlHeader { get; set; }
+    public string? Markdown { get; set; }
     
     public static async Task<AdoWiki> FromFileAsync(FileInfo mdFile)
     {
-      var adoWiki = new AdoWiki(mdFile);
+      var adoWiki = new AdoWiki(mdFile)
+      { 
+        MdFile = mdFile 
+      };
 
       await adoWiki.LoadContentAsync();
 

@@ -15,7 +15,6 @@ namespace DocFxHelper.Specification
 
     public required string WikiUrl { get; set; }
     
-
     public static DocSpec Init()
     {
       var spec = new DocFxHelper.Specification.DocSpecAdoWiki()

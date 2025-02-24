@@ -76,6 +76,8 @@ namespace DocFxHelper.CLI.Commands
       _logger.LogInformation("  specJson: [{specJson}]", specJson);
       _logger.LogInformation(" buildJson: [{buildJson}]", buildJson);
 
+      var currentDirectory = Environment.CurrentDirectory;
+
       if (System.IO.File.Exists(path) && System.IO.Directory.Exists(specJson))
       {
         (path, specJson) = (specJson, path); // Tupple - Sweet!
@@ -89,6 +91,8 @@ namespace DocFxHelper.CLI.Commands
       {
         return (int)ExitValues.SpecJsonNotFound;
       }
+
+      Directory.SetCurrentDirectory(spec.FileInfo!.Directory!.FullName);
 
       var build = await _common.GetBuildFromJsonAsync(buildJson, location);
 
@@ -112,7 +116,7 @@ namespace DocFxHelper.CLI.Commands
           }
       }
 
-
+      Directory.SetCurrentDirectory(currentDirectory);
 
       return (int)ExitValues.Ok;
     }

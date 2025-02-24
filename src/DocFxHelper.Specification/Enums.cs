@@ -29,7 +29,7 @@ namespace DocFxHelper.Specification
       /// <summary>
       /// Represents the specs for integrating a PowerShell Module in the Doc site
       /// </summary>
-      PowerShellModule = 5,
+      PowershellModule = 5,
       /// <summary>
       /// Represents the specs for integrating a DocFx Conceptual site in the Doc site
       /// </summary>
@@ -37,7 +37,7 @@ namespace DocFxHelper.Specification
       /// <summary>
       /// Represents the specs for integrating the DocFx metadata generated Yaml from a .Net Library/API in the Doc site
       /// </summary>
-      DotnetApiYaml = 7
+      ApiYaml = 7
     }
   }
 }

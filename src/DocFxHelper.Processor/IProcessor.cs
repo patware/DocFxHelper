@@ -10,6 +10,6 @@ namespace DocFxHelper.Processor
   {
     Task<int> ConvertAsync(T docSpec, DirectoryInfo location, DocFxHelper.Specification.DocBuild build);
 
-    Task<int> AddAsync(T docSpec, DirectoryInfo location);
+    Task<int> AddAsync(T docSpec, FileInfo docfxJson);
   }
 }

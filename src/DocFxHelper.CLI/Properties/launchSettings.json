@@ -27,8 +27,13 @@
     },
     "DocFxHelper.CLI Convert WikiEdge": {
       "commandName": "Project",
-      "commandLineArgs": "convert",
-      "workingDirectory": "D:\\docfxHelper\\WikiEdge.Current"
+      "commandLineArgs": "convert WikiEdge",
+      "workingDirectory": "D:\\docfxHelper\\Convert"
+    },
+    "DocFxHelper.CLI Add WikiEdge": {
+      "commandName": "Project",
+      "commandLineArgs": "add WikiEdge",
+      "workingDirectory": "D:\\docfxHelper\\Build"
     }
 
   }

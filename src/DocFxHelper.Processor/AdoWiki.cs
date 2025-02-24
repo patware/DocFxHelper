@@ -10,10 +10,15 @@ using System.ComponentModel;
 using static System.Net.Mime.MediaTypeNames;
 using DocFxHelper.Specification;
 using Markdig.Parsers;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Reflection;
+using DocFxHelper.Common;
+using YamlDotNet.Core.Tokens;
 
 namespace DocFxHelper.Processor
 {
-  public class AdoWiki: IProcessor<DocSpecAdoWiki>
+  public class AdoWiki : IProcessor<DocSpecAdoWiki>
   {
     private const string Http_Home_Net = "http://home.net";
     private readonly Uri _homeUri = new(Http_Home_Net);
@@ -34,7 +39,6 @@ namespace DocFxHelper.Processor
         .Build();
 
     }
-
 
     public async Task<int> ConvertAsync(DocSpecAdoWiki docSpec, DirectoryInfo location, DocBuild build)
     {
@@ -63,7 +67,7 @@ namespace DocFxHelper.Processor
     {
       var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
 
-      var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader);
+      var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader ?? string.Empty);
 
       if (yamlHeader == null)
       {
@@ -133,7 +137,7 @@ namespace DocFxHelper.Processor
 
       var pageRelativePath = Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
 
-      var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader);
+      var yamlHeader = _yamlDeserializer.Deserialize<Dictionary<string, object>>(mdContent.YamlHeader ?? string.Empty);
 
       if (yamlHeader == null)
       {
@@ -178,7 +182,7 @@ namespace DocFxHelper.Processor
     private async Task FixHyperlinks(FileInfo mdFile)
     {
       var mdContent = await Domain.AdoWiki.FromFileAsync(mdFile);
-      var markdownDocument = Markdown.Parse(mdContent.Markdown);
+      var markdownDocument = Markdown.Parse(mdContent.Markdown ?? string.Empty);
 
       var mdFilePathRelativeToRoot = Path.GetRelativePath(Directory.GetCurrentDirectory(), mdFile.FullName);
       var mdFileUri = new Uri(_homeUri, mdFilePathRelativeToRoot!);
@@ -550,9 +554,93 @@ namespace DocFxHelper.Processor
       }
     }
 
-    public async Task<int> AddAsync(DocSpecAdoWiki docSpec, DirectoryInfo location)
+    public async Task<int> AddAsync(DocSpecAdoWiki docSpec, FileInfo docfx_json)
     {
+      _logger.LogDebug("Adding spec [{name}] to [{docfxJson}]", docSpec.Id, docfx_json.FullName);
+
+      var specPathRelativeToDocfxJson = Path.GetRelativePath(docfx_json.DirectoryName!, docSpec.FileInfo!.Directory!.FullName);
+
+      var docfxConfig = await GetDocfxConfig(docfx_json);
+
+      if (docfxConfig.Build.Content.HasValue)
+      {
+        var contentItems = docfxConfig.Build.Content.Value.AnythingArray.ToList();
+
+        var contentItem = contentItems.FirstOrDefault(p => p.DocF.Src == specPathRelativeToDocfxJson);
+
+        if (contentItem.DocF == null)
+        {
+          contentItem.DocF = new DocF();
+          contentItems.Add(contentItem);
+          docfxConfig.Build.Content = contentItems.ToArray();
+        }
+
+        contentItem.DocF.Src = specPathRelativeToDocfxJson;
+        contentItem.DocF.Files = new[] { "**/*.{md,yml}" };
+        contentItem.DocF.Exclude = docSpec.Excludes;
+        if (docSpec.Target != "/")
+        {
+          contentItem.DocF.Dest = docSpec.Target;
+        }
+      }
+
+      if (docfxConfig.Build.Resource.HasValue)
+      {
+        var contentItems = docfxConfig.Build.Resource.Value.AnythingArray.ToList();
+
+        var contentItem = contentItems.FirstOrDefault(p => p.DocF.Src == specPathRelativeToDocfxJson);
+
+        if (contentItem.DocF == null)
+        {
+          contentItem.DocF = new DocF();
+          contentItems.Add(contentItem);
+          docfxConfig.Build.Resource = contentItems.ToArray();
+        }
+
+        contentItem.DocF.Src = specPathRelativeToDocfxJson;
+        contentItem.DocF.Files = ".attachments/**";
+
+      }
+
+      await SaveDocfxConfig(docfxConfig, docfx_json);
+
       return 0;
+    }
+
+    public async Task<DocFxHelper.Common.DocFx> GetDocfxConfig(FileInfo docfx_Json)
+    {
+      if (docfx_Json.Exists)
+      {
+        var s = await File.ReadAllTextAsync(docfx_Json.FullName);
+
+        return DocFx.FromJson(s);
+      }
+
+      DocFx docFx = await Task.Run<DocFx>(() =>
+      {
+        var ass = Assembly.GetExecutingAssembly();
+
+        using (var stream = ass.GetManifestResourceStream("docfx.json"))
+        {
+          if (stream != null)
+          {
+            using (var streamReader = new StreamReader(stream))
+            {
+              _logger.LogDebug("Reading the docfx.json from the assembly's embedded resource");
+              return DocFx.FromJson(streamReader.ReadToEnd());
+            }
+          }
+        }
+
+        return new DocFxHelper.Common.DocFx();
+      });
+
+      return docFx;
+
+    }
+    public static async Task SaveDocfxConfig(DocFxHelper.Common.DocFx docfx, FileInfo docfx_Json)
+    {
+      await File.WriteAllTextAsync(docfx_Json.FullName, docfx.ToJson());
     }
   }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace DocFxHelper.Specification
@@ -17,5 +18,7 @@ namespace DocFxHelper.Specification
     public string RepositoryBranch { get; set; } = "refs/heads/main";
     public string RepositoryBranchName { get; set; } = "main";
 
+    [JsonIgnore]
+    public FileInfo? FileInfo { get; set; }
   }
 }

@@ -22,6 +22,7 @@ namespace DocFxHelper.CLI.Commands
     internal const string Specs_docs_json = "spec.docs.json";
     internal const string BuildOption = "--Build";
     internal const string Build_docs_json = "build.docs.json";
+    internal const string DocFxOption = "--DocFx";
 
     /// <summary>
     /// Returns a --build --Build Command option
@@ -69,6 +70,17 @@ namespace DocFxHelper.CLI.Commands
       specOption.AddAlias(SpecOption.ToLower());
       specOption.AddAlias("-s");
       return specOption;
+    }
+
+    internal Option<string> GetDocFxOption()
+    {
+      var opt = new Option<string>(
+        name: DocFxOption,
+        getDefaultValue: () => "docfx.json",
+        description: "Path to the docfx.json file"
+      );
+      opt.AddAlias(DocFxOption.ToLower());
+      return opt;
     }
 
     internal DirectoryInfo GetLocation(string path)
@@ -130,6 +142,7 @@ namespace DocFxHelper.CLI.Commands
       {
         _logger.LogDebug("Deserializing {buildJson}", buildJson);
         build = await System.Text.Json.JsonSerializer.DeserializeAsync<DocFxHelper.Specification.DocBuild>(buildJsonStream);
+        build!.FileInfo = new System.IO.FileInfo(buildJson);
         return build;
       }
       catch (System.Text.Json.JsonException ex)
@@ -172,6 +185,7 @@ namespace DocFxHelper.CLI.Commands
       {
         _logger.LogDebug("Deserializing {specJson}", specJson);
         spec = await System.Text.Json.JsonSerializer.DeserializeAsync<DocFxHelper.Specification.DocSpec>(specJsonStream);
+        spec!.FileInfo = new System.IO.FileInfo(specJson);
         return spec;
       }
       catch (System.Text.Json.JsonException ex)
@@ -181,6 +195,24 @@ namespace DocFxHelper.CLI.Commands
       }
 
       return null;
+    }
+
+    internal FileInfo GetDocFxJson(string docfxJson)
+    {
+      if (File.Exists(docfxJson))
+      {
+        return new FileInfo(docfxJson);
+      }
+
+      var check = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "docfx.json");
+
+      if (File.Exists(check))
+      {
+        return new FileInfo(check);
+      }
+
+      throw new System.IO.FileNotFoundException("docfx.json not found");
+
     }
   }
 }

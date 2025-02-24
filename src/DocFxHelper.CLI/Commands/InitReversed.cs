@@ -41,7 +41,7 @@ namespace DocFxHelper.CLI.Commands
     {
       _logger.LogInformation("InitReversed starting");
 
-      var spec_json_files = System.IO.Directory.GetFiles(System.Environment.CurrentDirectory, spec_json_pattern);
+      var spec_json_files = System.IO.Directory.GetFiles(System.Environment.CurrentDirectory, spec_json_pattern, SearchOption.AllDirectories);
 
       if (spec_json_files.Length == 0)
       {
